@@ -1,3 +1,7 @@
+from agent_harness.tools.command import (
+    CommandResult,
+    CommandRunner,
+)
 from agent_harness.tools.repository import (
     RepositoryTools,
     SearchMatch,
@@ -6,6 +10,8 @@ from agent_harness.tools.repository import (
 )
 
 __all__ = [
+    "CommandResult",
+    "CommandRunner",
     "RepositoryTools",
     "SearchMatch",
     "ToolExecutionError",

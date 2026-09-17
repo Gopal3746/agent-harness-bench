@@ -9,6 +9,7 @@ from uuid import uuid4
 
 _IGNORED_DIRECTORY_NAMES = frozenset(
     {
+        ".agent-runtime",
         ".git",
         ".venv",
         "__pycache__",

@@ -6,6 +6,8 @@ from agent_harness.models import (
     TaskSpec,
 )
 from agent_harness.tools import (
+    CommandResult,
+    CommandRunner,
     RepositoryTools,
     SearchMatch,
     ToolExecutionError,
@@ -20,6 +22,8 @@ __version__ = "0.1.0"
 
 __all__ = [
     "BenchmarkConfig",
+    "CommandResult",
+    "CommandRunner",
     "ExecutionStrategy",
     "RepositoryTools",
     "SearchMatch",
