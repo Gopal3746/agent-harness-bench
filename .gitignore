@@ -14,3 +14,5 @@ workspaces/
 .DS_Store
 .idea/
 .vscode/
+
+*.egg-info/
