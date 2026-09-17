@@ -9,6 +9,7 @@ from agent_harness.tools import (
     RepositoryTools,
     SearchMatch,
     ToolExecutionError,
+    WriteResult,
 )
 from agent_harness.workspace import (
     TaskWorkspace,
@@ -26,5 +27,6 @@ __all__ = [
     "TaskWorkspace",
     "ToolExecutionError",
     "WorkspaceManager",
+    "WriteResult",
     "__version__",
 ]
