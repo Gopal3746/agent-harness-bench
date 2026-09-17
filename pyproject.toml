@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "An instrumented coding-agent harness for evaluating orchestration strategies."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.11,<3",
+]
 
 [project.optional-dependencies]
 dev = [
