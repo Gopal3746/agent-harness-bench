@@ -19,6 +19,10 @@ from agent_harness.models import (
     ExecutionStrategy,
     TaskSpec,
 )
+from agent_harness.runner import (
+    SingleTaskRunner,
+    TaskRunResult,
+)
 from agent_harness.tools import (
     CommandResult,
     CommandRunner,
@@ -51,7 +55,9 @@ __all__ = [
     "RepositoryTools",
     "SearchMatch",
     "SingleAgent",
+    "SingleTaskRunner",
     "StreamedToolCall",
+    "TaskRunResult",
     "TaskSpec",
     "TaskWorkspace",
     "TokenUsage",
