@@ -1,5 +1,12 @@
 """Instrumented coding-agent evaluation harness."""
 
+from agent_harness.agent import (
+    AgentRunResult,
+    AgentStatus,
+    ChatClient,
+    SingleAgent,
+    ToolCallRecord,
+)
 from agent_harness.llm import (
     ChatCompletionResult,
     OpenRouterClient,
@@ -31,7 +38,10 @@ from agent_harness.workspace import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "AgentRunResult",
+    "AgentStatus",
     "BenchmarkConfig",
+    "ChatClient",
     "ChatCompletionResult",
     "CommandResult",
     "CommandRunner",
@@ -40,10 +50,12 @@ __all__ = [
     "OpenRouterError",
     "RepositoryTools",
     "SearchMatch",
+    "SingleAgent",
     "StreamedToolCall",
     "TaskSpec",
     "TaskWorkspace",
     "TokenUsage",
+    "ToolCallRecord",
     "ToolDispatcher",
     "ToolExecutionError",
     "ToolResponse",
