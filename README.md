@@ -19,6 +19,17 @@ parallel-subagent execution on reproducible repository-level coding tasks.
 - Estimated cost per task
 - Parallel speedup
 
+## Benchmark tasks
+
+Task fixtures live under `benchmarks/tasks`. Each task contains an immutable
+failing repository, an instruction, and a test command used for independent
+verification. The harness copies the repository into a fresh workspace before
+every run, ensuring that repeated experiments begin from the same state.
+
+The first task, `input-validation`, requires coordinated changes across three
+independent modules and is intentionally suitable for later sequential-versus-
+parallel orchestration experiments.
+
 ## Development setup
 
 Requires Python 3.12 or newer.

@@ -1,0 +1,8 @@
+{
+  "task_id": "input-validation",
+  "instruction": "Strengthen input validation across three independent modules. In validation_app/users.py, normalize_username must continue stripping whitespace and converting to lowercase, but must raise ValueError containing 'username' when the normalized username is blank. In validation_app/network.py, parse_port must return an integer only for values from 1 through 65535 inclusive; non-numeric and out-of-range values must raise ValueError containing 'port'. In validation_app/tags.py, normalize_tags must continue stripping whitespace, converting tags to lowercase, and preserving order, but must raise ValueError containing 'tags' when the collection is empty or any normalized tag is blank. Make the smallest changes needed and run the configured tests.",
+  "source_dir": "repository",
+  "test_command": ["python", "-m", "pytest", "-q"],
+  "timeout_seconds": 60,
+  "tags": ["validation", "multi-module", "decomposable"]
+}
