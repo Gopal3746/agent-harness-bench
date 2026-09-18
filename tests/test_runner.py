@@ -128,12 +128,16 @@ def test_runner_edits_isolated_workspace_and_verifies_task(
         client,
         workspaces,
         config,
+        clock_ns=iter(
+            [1_000_000_000, 1_750_000_000]
+        ).__next__,
     ).run(task, run_id="run-001")
 
     assert result.passed is True
     assert result.verification.succeeded is True
     assert result.strategy is ExecutionStrategy.SINGLE
     assert result.run_id == "run-001"
+    assert result.wall_time_ms == 750.0
     assert client.session_ids == ["run-001", "run-001"]
     assert (result.workspace.path / "app.py").read_text(
         encoding="utf-8"

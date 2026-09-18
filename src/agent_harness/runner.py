@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from agent_harness.agent import (
@@ -35,6 +37,7 @@ class TaskRunResult:
     workspace: TaskWorkspace
     agent: AgentRunResult
     verification: CommandResult
+    wall_time_ms: float
 
     @property
     def passed(self) -> bool:
@@ -51,6 +54,8 @@ class SingleTaskRunner:
         client: ChatClient,
         workspaces: WorkspaceManager,
         config: BenchmarkConfig,
+        *,
+        clock_ns: Callable[[], int] = time.perf_counter_ns,
     ) -> None:
         if ExecutionStrategy.SINGLE not in config.strategies:
             raise ValueError(
@@ -60,6 +65,7 @@ class SingleTaskRunner:
         self.client = client
         self.workspaces = workspaces
         self.config = config
+        self.clock_ns = clock_ns
 
     def run(
         self,
@@ -68,6 +74,8 @@ class SingleTaskRunner:
         run_id: str | None = None,
     ) -> TaskRunResult:
         """Execute and verify a task inside a fresh workspace."""
+
+        started_ns = self.clock_ns()
 
         with self.workspaces.provision(
             task,
@@ -101,4 +109,8 @@ class SingleTaskRunner:
                 workspace=workspace,
                 agent=agent_result,
                 verification=verification,
+                wall_time_ms=(
+                    self.clock_ns() - started_ns
+                )
+                / 1_000_000,
             )
