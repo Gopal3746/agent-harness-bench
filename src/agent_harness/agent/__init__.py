@@ -5,6 +5,11 @@ from agent_harness.agent.planner import (
     TaskPlan,
     TaskPlanner,
 )
+from agent_harness.agent.sequential import (
+    SequentialAgent,
+    SequentialRunResult,
+    SubtaskRunResult,
+)
 from agent_harness.agent.single import (
     AgentRunResult,
     AgentStatus,
@@ -19,7 +24,10 @@ __all__ = [
     "ChatClient",
     "PlanningError",
     "PlanningResult",
+    "SequentialAgent",
+    "SequentialRunResult",
     "SingleAgent",
+    "SubtaskRunResult",
     "SubtaskSpec",
     "TaskPlan",
     "TaskPlanner",
