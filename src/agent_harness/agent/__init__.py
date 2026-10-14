@@ -6,6 +6,10 @@ from agent_harness.agent.merge import (
     clone_workspace,
     merge_change_sets,
 )
+from agent_harness.agent.parallel import (
+    ParallelAgent,
+    ParallelRunResult,
+)
 from agent_harness.agent.planner import (
     PlanningError,
     PlanningResult,
@@ -31,6 +35,8 @@ __all__ = [
     "AgentStatus",
     "ChatClient",
     "FileChange",
+    "ParallelAgent",
+    "ParallelRunResult",
     "PlanningError",
     "PlanningResult",
     "SequentialAgent",
