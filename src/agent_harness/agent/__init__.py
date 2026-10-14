@@ -1,3 +1,11 @@
+from agent_harness.agent.merge import (
+    FileChange,
+    WorkspaceChangeSet,
+    WorkspaceMergeError,
+    WorkspaceSnapshot,
+    clone_workspace,
+    merge_change_sets,
+)
 from agent_harness.agent.planner import (
     PlanningError,
     PlanningResult,
@@ -22,6 +30,7 @@ __all__ = [
     "AgentRunResult",
     "AgentStatus",
     "ChatClient",
+    "FileChange",
     "PlanningError",
     "PlanningResult",
     "SequentialAgent",
@@ -32,4 +41,9 @@ __all__ = [
     "TaskPlan",
     "TaskPlanner",
     "ToolCallRecord",
+    "WorkspaceChangeSet",
+    "WorkspaceMergeError",
+    "WorkspaceSnapshot",
+    "clone_workspace",
+    "merge_change_sets",
 ]
