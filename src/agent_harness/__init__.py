@@ -36,7 +36,9 @@ from agent_harness.models import (
     TaskSpec,
 )
 from agent_harness.runner import (
+    AgentResult,
     SingleTaskRunner,
+    TaskRunner,
     TaskRunResult,
 )
 from agent_harness.telemetry import (
@@ -65,6 +67,7 @@ from agent_harness.workspace import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "AgentResult",
     "AgentRunResult",
     "AgentStatus",
     "BenchmarkConfig",
@@ -95,6 +98,7 @@ __all__ = [
     "TaskPlan",
     "TaskPlanner",
     "TaskRunResult",
+    "TaskRunner",
     "TaskSpec",
     "TaskWorkspace",
     "TokenUsage",

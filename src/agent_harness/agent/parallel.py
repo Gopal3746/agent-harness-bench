@@ -58,6 +58,19 @@ class ParallelRunResult:
         return self.status is AgentStatus.COMPLETED
 
     @property
+    def final_answer(self) -> str:
+        if not self.subtasks:
+            return ""
+        return self.subtasks[-1].agent.final_answer
+
+    @property
+    def steps(self) -> int:
+        return sum(
+            subtask.agent.steps
+            for subtask in self.subtasks
+        )
+
+    @property
     def subtasks(self) -> tuple[SubtaskRunResult, ...]:
         return tuple(
             subtask

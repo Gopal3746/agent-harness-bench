@@ -10,8 +10,12 @@ from agent_harness import (
     BenchmarkConfig,
     ChatCompletionResult,
     ExecutionStrategy,
+    ParallelRunResult,
+    RunRecord,
+    SequentialRunResult,
     SingleTaskRunner,
     StreamedToolCall,
+    TaskRunner,
     TaskSpec,
     WorkspaceManager,
 )
@@ -66,6 +70,15 @@ def make_completion(
         raw_event_count=2,
     )
 
+
+def make_plan_completion() -> ChatCompletionResult:
+    return make_completion(
+        content=(
+            '{"subtasks": [{"subtask_id": "edit", '
+            '"instruction": "Change VALUE from 1 to 2.", '
+            '"depends_on": []}]}'
+        )
+    )
 
 def make_task(tmp_path: Path) -> TaskSpec:
     source = tmp_path / "source"
@@ -212,4 +225,114 @@ def test_runner_requires_single_strategy(
             FakeChatClient([]),
             WorkspaceManager(tmp_path / "workspaces"),
             config,
+        )
+
+@pytest.mark.parametrize(
+    ("strategy", "result_type"),
+    [
+        (
+            ExecutionStrategy.SEQUENTIAL,
+            SequentialRunResult,
+        ),
+        (
+            ExecutionStrategy.PARALLEL,
+            ParallelRunResult,
+        ),
+    ],
+)
+def test_task_runner_selects_subagent_strategy(
+    tmp_path: Path,
+    strategy: ExecutionStrategy,
+    result_type: type[
+        SequentialRunResult | ParallelRunResult
+    ],
+) -> None:
+    task = make_task(tmp_path)
+
+    client = FakeChatClient(
+        [
+            make_plan_completion(),
+            make_completion(
+                tool_calls=(
+                    StreamedToolCall(
+                        index=0,
+                        call_id="edit-call",
+                        name="replace_text",
+                        arguments=(
+                            '{"path":"app.py",'
+                            '"old":"VALUE = 1",'
+                            '"new":"VALUE = 2"}'
+                        ),
+                    ),
+                )
+            ),
+            make_completion(
+                content="Subtask complete."
+            ),
+        ]
+    )
+
+    config = BenchmarkConfig(
+        model="test/model",
+        strategies=(strategy,),
+        repetitions=1,
+        parallelism=(
+            2
+            if strategy is ExecutionStrategy.PARALLEL
+            else 1
+        ),
+    )
+
+    result = TaskRunner(
+        client,
+        WorkspaceManager(
+            tmp_path / "workspaces",
+            retain_workspaces=True,
+        ),
+        config,
+    ).run(
+        task,
+        strategy=strategy,
+        run_id=f"{strategy.value}-run",
+    )
+
+    assert result.passed is True
+    assert result.strategy is strategy
+    assert isinstance(result.agent, result_type)
+    assert result.agent.final_answer == "Subtask complete."
+    assert result.agent.steps == 2
+    assert result.agent.total_model_calls == 3
+
+    assert (result.workspace.path / "app.py").read_text(
+        encoding="utf-8"
+    ) == "VALUE = 2\n"
+
+    record = RunRecord.from_result(result)
+
+    assert record.strategy is strategy
+    assert record.final_answer == "Subtask complete."
+    assert record.steps == 2
+    assert record.model_call_count == 3
+
+
+def test_task_runner_rejects_disabled_strategy(
+    tmp_path: Path,
+) -> None:
+    runner = TaskRunner(
+        FakeChatClient([]),
+        WorkspaceManager(tmp_path / "workspaces"),
+        BenchmarkConfig(
+            model="test/model",
+            strategies=(ExecutionStrategy.SINGLE,),
+            repetitions=1,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="is not enabled",
+    ):
+        runner.run(
+            make_task(tmp_path),
+            strategy=ExecutionStrategy.SEQUENTIAL,
         )
