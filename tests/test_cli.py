@@ -32,13 +32,24 @@ class FakeOpenRouterClient:
         seed: int | None = None,
         session_id: str | None = None,
     ) -> ChatCompletionResult:
-        del messages, tools, temperature, max_tokens, seed, session_id
+        del tools, temperature, max_tokens, seed, session_id
+
+        content = "The task is complete."
+
+        if messages and "decompose repository-level" in str(
+            messages[0].get("content", "")
+        ):
+            content = (
+                '{"subtasks": [{"subtask_id": "inspect", '
+                '"instruction": "Inspect the current value.", '
+                '"depends_on": []}]}'
+            )
 
         return ChatCompletionResult(
             request_id="request-id",
             generation_id="generation-id",
             model=model,
-            content="The task is complete.",
+            content=content,
             reasoning="",
             tool_calls=(),
             finish_reason="stop",
@@ -132,6 +143,7 @@ def test_run_command_writes_passing_result(
     output = tmp_path / "results" / "runs.jsonl"
     workspaces = tmp_path / "workspaces"
     FakeOpenRouterClient.api_keys.clear()
+
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
     monkeypatch.setattr(
         cli,
@@ -160,11 +172,55 @@ def test_run_command_writes_passing_result(
     summary = json.loads(capsys.readouterr().out)
     assert summary["passed"] is True
     assert summary["run_id"] == "cli-run-001"
+    assert summary["strategy"] == "single"
 
     record = json.loads(output.read_text(encoding="utf-8"))
     assert record["task_id"] == "sample-task"
     assert record["passed"] is True
+    assert record["strategy"] == "single"
     assert list(workspaces.iterdir()) == []
+
+
+def test_run_command_selects_parallel_strategy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = write_task(tmp_path)
+    output = tmp_path / "parallel-runs.jsonl"
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
+    monkeypatch.setattr(
+        cli,
+        "OpenRouterClient",
+        FakeOpenRouterClient,
+    )
+
+    exit_code = cli.main(
+        [
+            "run",
+            str(manifest),
+            "--model",
+            "test/model",
+            "--strategy",
+            "parallel",
+            "--parallelism",
+            "2",
+            "--output",
+            str(output),
+            "--workspace-root",
+            str(tmp_path / "workspaces"),
+        ]
+    )
+
+    assert exit_code == 0
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["strategy"] == "parallel"
+
+    record = json.loads(output.read_text(encoding="utf-8"))
+    assert record["strategy"] == "parallel"
+    assert record["model_call_count"] == 2
 
 
 def test_run_command_returns_one_when_verification_fails(
@@ -172,6 +228,7 @@ def test_run_command_returns_one_when_verification_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manifest = write_task(tmp_path, passing=False)
+
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
     monkeypatch.setattr(
         cli,

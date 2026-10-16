@@ -10,8 +10,12 @@ from typing import Any
 from pydantic import ValidationError
 
 from agent_harness.llm import OpenRouterClient
-from agent_harness.models import BenchmarkConfig, TaskSpec
-from agent_harness.runner import SingleTaskRunner
+from agent_harness.models import (
+    BenchmarkConfig,
+    ExecutionStrategy,
+    TaskSpec,
+)
+from agent_harness.runner import TaskRunner
 from agent_harness.telemetry import JsonlRunWriter
 from agent_harness.workspace import WorkspaceManager
 
@@ -42,6 +46,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         required=True,
         help="OpenRouter model identifier",
+    )
+    run_parser.add_argument(
+        "--strategy",
+        type=ExecutionStrategy,
+        choices=tuple(ExecutionStrategy),
+        default=ExecutionStrategy.SINGLE,
+        help="orchestration strategy (default: single)",
+    )
+    run_parser.add_argument(
+        "--parallelism",
+        type=int,
+        default=2,
+        help="maximum parallel subagents (default: 2)",
     )
     run_parser.add_argument(
         "--output",
@@ -142,7 +159,9 @@ def _run_task(arguments: argparse.Namespace) -> int:
     task = load_task(arguments.task)
     config = BenchmarkConfig(
         model=arguments.model,
+        strategies=(arguments.strategy,),
         repetitions=1,
+        parallelism=arguments.parallelism,
         temperature=arguments.temperature,
         max_steps=arguments.max_steps,
         seed=arguments.seed,
@@ -156,11 +175,15 @@ def _run_task(arguments: argparse.Namespace) -> int:
         api_key,
         app_name="Agent Harness Bench",
     ) as client:
-        result = SingleTaskRunner(
+        result = TaskRunner(
             client,
             workspaces,
             config,
-        ).run(task, run_id=arguments.run_id)
+        ).run(
+            task,
+            strategy=arguments.strategy,
+            run_id=arguments.run_id,
+        )
 
     record = JsonlRunWriter(arguments.output).append_result(result)
 
@@ -172,6 +195,7 @@ def _run_task(arguments: argparse.Namespace) -> int:
                 "output": str(arguments.output),
                 "passed": record.passed,
                 "run_id": record.run_id,
+                "strategy": record.strategy,
                 "task_id": record.task_id,
                 "wall_time_ms": record.wall_time_ms,
             },
