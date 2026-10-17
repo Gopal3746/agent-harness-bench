@@ -23,6 +23,10 @@ from agent_harness.agent import (
     clone_workspace,
     merge_change_sets,
 )
+from agent_harness.benchmark import (
+    BenchmarkResult,
+    BenchmarkRunner,
+)
 from agent_harness.llm import (
     ChatCompletionResult,
     OpenRouterClient,
@@ -71,6 +75,8 @@ __all__ = [
     "AgentRunResult",
     "AgentStatus",
     "BenchmarkConfig",
+    "BenchmarkResult",
+    "BenchmarkRunner",
     "ChatClient",
     "ChatCompletionResult",
     "CommandResult",
