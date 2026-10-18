@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from agent_harness.benchmark import BenchmarkRunner
 from agent_harness.llm import OpenRouterClient
 from agent_harness.models import (
     BenchmarkConfig,
@@ -99,7 +100,82 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="keep the workspace after the run",
     )
-
+    benchmark_parser = subparsers.add_parser(
+        "benchmark",
+        help="run a controlled multi-strategy experiment",
+    )
+    benchmark_parser.add_argument(
+        "task",
+        type=Path,
+        help="path to a JSON task specification",
+    )
+    benchmark_parser.add_argument(
+        "--model",
+        required=True,
+        help="OpenRouter model identifier",
+    )
+    benchmark_parser.add_argument(
+        "--strategy",
+        dest="strategies",
+        action="append",
+        type=ExecutionStrategy,
+        choices=tuple(ExecutionStrategy),
+        help=(
+            "strategy to benchmark; repeat this option to select "
+            "multiple strategies (default: all)"
+        ),
+    )
+    benchmark_parser.add_argument(
+        "--repetitions",
+        type=int,
+        default=5,
+        help="runs per strategy (default: 5)",
+    )
+    benchmark_parser.add_argument(
+        "--parallelism",
+        type=int,
+        default=2,
+        help="maximum parallel subagents (default: 2)",
+    )
+    benchmark_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("results/runs.jsonl"),
+        help="JSONL results path (default: results/runs.jsonl)",
+    )
+    benchmark_parser.add_argument(
+        "--workspace-root",
+        type=Path,
+        default=Path("workspaces"),
+        help="isolated workspace directory (default: workspaces)",
+    )
+    benchmark_parser.add_argument(
+        "--experiment-id",
+        help="optional stable experiment identifier",
+    )
+    benchmark_parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=20,
+        help="maximum model calls per agent (default: 20)",
+    )
+    benchmark_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="sampling temperature (default: 0.0)",
+    )
+    benchmark_parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="model seed when supported (default: 42)",
+    )
+    benchmark_parser.add_argument(
+        "--retain-workspace",
+        action="store_true",
+        help="keep workspaces after each run",
+    )
     return parser
 
 
@@ -133,20 +209,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
 
-    if arguments.command == "run":
-        try:
+    try:
+        if arguments.command == "run":
             return _run_task(arguments)
-        except (
-            FileNotFoundError,
-            json.JSONDecodeError,
-            OSError,
-            ValidationError,
-            ValueError,
-        ) as error:
-            parser.error(str(error))
+
+        if arguments.command == "benchmark":
+            return _run_benchmark(arguments)
+    except (
+        FileNotFoundError,
+        json.JSONDecodeError,
+        OSError,
+        ValidationError,
+        ValueError,
+    ) as error:
+        parser.error(str(error))
 
     parser.error(f"unknown command: {arguments.command}")
-
 
 def _run_task(arguments: argparse.Namespace) -> int:
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
@@ -204,3 +282,62 @@ def _run_task(arguments: argparse.Namespace) -> int:
     )
 
     return 0 if record.passed else 1
+
+def _run_benchmark(arguments: argparse.Namespace) -> int:
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    if not api_key.strip():
+        raise ValueError(
+            "OPENROUTER_API_KEY environment variable is required"
+        )
+
+    task = load_task(arguments.task)
+    strategies = tuple(arguments.strategies or ExecutionStrategy)
+    config = BenchmarkConfig(
+        model=arguments.model,
+        strategies=strategies,
+        repetitions=arguments.repetitions,
+        parallelism=arguments.parallelism,
+        temperature=arguments.temperature,
+        max_steps=arguments.max_steps,
+        seed=arguments.seed,
+    )
+    workspaces = WorkspaceManager(
+        arguments.workspace_root,
+        retain_workspaces=arguments.retain_workspace,
+    )
+    writer = JsonlRunWriter(arguments.output)
+
+    with OpenRouterClient(
+        api_key,
+        app_name="Agent Harness Bench",
+    ) as client:
+        result = BenchmarkRunner(
+            client,
+            workspaces,
+            config,
+            writer=writer,
+        ).run(
+            task,
+            experiment_id=arguments.experiment_id,
+        )
+
+    print(
+        json.dumps(
+            {
+                "experiment_id": result.experiment_id,
+                "model": config.model,
+                "output": str(arguments.output),
+                "passed_runs": result.passed_runs,
+                "pass_rate": result.pass_rate,
+                "strategies": [
+                    strategy.value for strategy in config.strategies
+                ],
+                "task_id": result.task_id,
+                "total_runs": result.total_runs,
+            },
+            sort_keys=True,
+        )
+    )
+
+    return 0 if result.passed_runs == result.total_runs else 1

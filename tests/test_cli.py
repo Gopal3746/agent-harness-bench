@@ -251,6 +251,53 @@ def test_run_command_returns_one_when_verification_fails(
 
     assert exit_code == 1
 
+def test_benchmark_command_runs_selected_strategies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = write_task(tmp_path)
+    output = tmp_path / "benchmark.jsonl"
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
+    monkeypatch.setattr(
+        cli,
+        "OpenRouterClient",
+        FakeOpenRouterClient,
+    )
+
+    exit_code = cli.main(
+        [
+            "benchmark",
+            str(manifest),
+            "--model",
+            "test/model",
+            "--strategy",
+            "single",
+            "--strategy",
+            "sequential",
+            "--repetitions",
+            "2",
+            "--experiment-id",
+            "cli-experiment",
+            "--output",
+            str(output),
+            "--workspace-root",
+            str(tmp_path / "workspaces"),
+        ]
+    )
+
+    assert exit_code == 0
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["experiment_id"] == "cli-experiment"
+    assert summary["strategies"] == ["single", "sequential"]
+    assert summary["total_runs"] == 4
+    assert summary["passed_runs"] == 4
+    assert summary["pass_rate"] == 1.0
+
+    records = output.read_text(encoding="utf-8").splitlines()
+    assert len(records) == 4
 
 def test_run_command_requires_api_key(
     tmp_path: Path,
