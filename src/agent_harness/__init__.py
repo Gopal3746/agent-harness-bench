@@ -23,6 +23,11 @@ from agent_harness.agent import (
     clone_workspace,
     merge_change_sets,
 )
+from agent_harness.analysis import (
+    StrategySummary,
+    load_run_records,
+    summarize_records,
+)
 from agent_harness.benchmark import (
     BenchmarkResult,
     BenchmarkRunner,
@@ -98,6 +103,7 @@ __all__ = [
     "SequentialRunResult",
     "SingleAgent",
     "SingleTaskRunner",
+    "StrategySummary",
     "StreamedToolCall",
     "SubtaskRunResult",
     "SubtaskSpec",
@@ -122,5 +128,7 @@ __all__ = [
     "__version__",
     "build_tool_schemas",
     "clone_workspace",
+    "load_run_records",
     "merge_change_sets",
+    "summarize_records",
 ]
