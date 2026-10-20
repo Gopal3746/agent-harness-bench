@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import argparse
@@ -9,6 +10,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from agent_harness.analysis import (
+    load_run_records,
+    summarize_records,
+    write_summary_csv,
+)
 from agent_harness.benchmark import BenchmarkRunner
 from agent_harness.llm import OpenRouterClient
 from agent_harness.models import (
@@ -176,6 +182,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="keep workspaces after each run",
     )
+    analyze_parser = subparsers.add_parser(
+        "analyze",
+        help="summarize benchmark JSONL by strategy",
+    )
+    analyze_parser.add_argument(
+        "input",
+        type=Path,
+        help="path to benchmark JSONL records",
+    )
+    analyze_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("results/summary.csv"),
+        help="summary CSV path (default: results/summary.csv)",
+    )
     return parser
 
 
@@ -215,6 +236,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if arguments.command == "benchmark":
             return _run_benchmark(arguments)
+
+        if arguments.command == "analyze":
+            return _analyze_runs(arguments)
     except (
         FileNotFoundError,
         json.JSONDecodeError,
@@ -341,3 +365,30 @@ def _run_benchmark(arguments: argparse.Namespace) -> int:
     )
 
     return 0 if result.passed_runs == result.total_runs else 1
+
+
+def _analyze_runs(arguments: argparse.Namespace) -> int:
+    records = load_run_records(arguments.input)
+
+    if not records:
+        raise ValueError("no run records found")
+
+    summaries = summarize_records(records)
+    write_summary_csv(arguments.output, summaries)
+
+    print(
+        json.dumps(
+            {
+                "input": str(arguments.input),
+                "output": str(arguments.output),
+                "run_count": len(records),
+                "strategies": [
+                    summary.strategy.value
+                    for summary in summaries
+                ],
+            },
+            sort_keys=True,
+        )
+    )
+
+    return 0

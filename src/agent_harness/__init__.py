@@ -27,6 +27,7 @@ from agent_harness.analysis import (
     StrategySummary,
     load_run_records,
     summarize_records,
+    write_summary_csv,
 )
 from agent_harness.benchmark import (
     BenchmarkResult,
@@ -131,4 +132,5 @@ __all__ = [
     "load_run_records",
     "merge_change_sets",
     "summarize_records",
+    "write_summary_csv",
 ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -298,6 +299,63 @@ def test_benchmark_command_runs_selected_strategies(
 
     records = output.read_text(encoding="utf-8").splitlines()
     assert len(records) == 4
+
+def test_analyze_command_writes_strategy_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = write_task(tmp_path)
+    runs = tmp_path / "runs.jsonl"
+    summary_path = tmp_path / "summary.csv"
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
+    monkeypatch.setattr(
+        cli,
+        "OpenRouterClient",
+        FakeOpenRouterClient,
+    )
+
+    assert cli.main(
+        [
+            "run",
+            str(manifest),
+            "--model",
+            "test/model",
+            "--output",
+            str(runs),
+            "--workspace-root",
+            str(tmp_path / "workspaces"),
+        ]
+    ) == 0
+
+    capsys.readouterr()
+
+    exit_code = cli.main(
+        [
+            "analyze",
+            str(runs),
+            "--output",
+            str(summary_path),
+        ]
+    )
+
+    assert exit_code == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["run_count"] == 1
+    assert output["strategies"] == ["single"]
+
+    with summary_path.open(
+        encoding="utf-8",
+        newline="",
+    ) as source:
+        rows = list(csv.DictReader(source))
+
+    assert len(rows) == 1
+    assert rows[0]["strategy"] == "single"
+    assert rows[0]["run_count"] == "1"
+    assert rows[0]["pass_rate"] == "1.0"
 
 def test_run_command_requires_api_key(
     tmp_path: Path,

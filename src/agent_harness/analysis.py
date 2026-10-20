@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import csv
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import fmean, median
 
@@ -70,6 +71,31 @@ def summarize_records(
         if strategy in grouped
     )
 
+def write_summary_csv(
+    path: Path,
+    summaries: Sequence[StrategySummary],
+) -> None:
+    """Write per-strategy summaries to a CSV file."""
+
+    output = path.expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = tuple(StrategySummary.__dataclass_fields__)
+
+    with output.open(
+        "w",
+        encoding="utf-8",
+        newline="",
+    ) as destination:
+        writer = csv.DictWriter(
+            destination,
+            fieldnames=fieldnames,
+        )
+        writer.writeheader()
+
+        for summary in summaries:
+            row = asdict(summary)
+            row["strategy"] = summary.strategy.value
+            writer.writerow(row)
 
 def _summarize_strategy(
     strategy: ExecutionStrategy,
