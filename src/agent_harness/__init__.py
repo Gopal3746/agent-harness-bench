@@ -24,9 +24,12 @@ from agent_harness.agent import (
     merge_change_sets,
 )
 from agent_harness.analysis import (
+    StrategyComparison,
     StrategySummary,
+    compare_strategies,
     load_run_records,
     summarize_records,
+    write_comparison_csv,
     write_summary_csv,
 )
 from agent_harness.benchmark import (
@@ -104,6 +107,7 @@ __all__ = [
     "SequentialRunResult",
     "SingleAgent",
     "SingleTaskRunner",
+    "StrategyComparison",
     "StrategySummary",
     "StreamedToolCall",
     "SubtaskRunResult",
@@ -129,8 +133,10 @@ __all__ = [
     "__version__",
     "build_tool_schemas",
     "clone_workspace",
+    "compare_strategies",
     "load_run_records",
     "merge_change_sets",
     "summarize_records",
+    "write_comparison_csv",
     "write_summary_csv",
 ]

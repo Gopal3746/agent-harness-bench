@@ -11,8 +11,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from agent_harness.analysis import (
+    compare_strategies,
     load_run_records,
     summarize_records,
+    write_comparison_csv,
     write_summary_csv,
 )
 from agent_harness.benchmark import BenchmarkRunner
@@ -197,6 +199,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("results/summary.csv"),
         help="summary CSV path (default: results/summary.csv)",
     )
+    analyze_parser.add_argument(
+        "--comparison-output",
+        type=Path,
+        default=Path("results/comparisons.csv"),
+        help=(
+            "baseline comparison CSV path "
+            "(default: results/comparisons.csv)"
+        ),
+    )
+    analyze_parser.add_argument(
+        "--baseline",
+        type=ExecutionStrategy,
+        choices=tuple(ExecutionStrategy),
+        default=ExecutionStrategy.SINGLE,
+        help="comparison baseline strategy (default: single)",
+    )
     return parser
 
 
@@ -374,11 +392,24 @@ def _analyze_runs(arguments: argparse.Namespace) -> int:
         raise ValueError("no run records found")
 
     summaries = summarize_records(records)
+    comparisons = compare_strategies(
+        summaries,
+        baseline=arguments.baseline,
+    )
+
     write_summary_csv(arguments.output, summaries)
+    write_comparison_csv(
+        arguments.comparison_output,
+        comparisons,
+    )
 
     print(
         json.dumps(
             {
+                "baseline": arguments.baseline,
+                "comparison_output": str(
+                    arguments.comparison_output
+                ),
                 "input": str(arguments.input),
                 "output": str(arguments.output),
                 "run_count": len(records),

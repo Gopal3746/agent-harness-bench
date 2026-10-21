@@ -252,6 +252,7 @@ def test_run_command_returns_one_when_verification_fails(
 
     assert exit_code == 1
 
+
 def test_benchmark_command_runs_selected_strategies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -300,6 +301,7 @@ def test_benchmark_command_runs_selected_strategies(
     records = output.read_text(encoding="utf-8").splitlines()
     assert len(records) == 4
 
+
 def test_analyze_command_writes_strategy_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -308,6 +310,7 @@ def test_analyze_command_writes_strategy_summary(
     manifest = write_task(tmp_path)
     runs = tmp_path / "runs.jsonl"
     summary_path = tmp_path / "summary.csv"
+    comparison_path = tmp_path / "comparisons.csv"
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
     monkeypatch.setattr(
@@ -337,6 +340,8 @@ def test_analyze_command_writes_strategy_summary(
             str(runs),
             "--output",
             str(summary_path),
+            "--comparison-output",
+            str(comparison_path),
         ]
     )
 
@@ -345,6 +350,7 @@ def test_analyze_command_writes_strategy_summary(
     output = json.loads(capsys.readouterr().out)
     assert output["run_count"] == 1
     assert output["strategies"] == ["single"]
+    assert output["baseline"] == "single"
 
     with summary_path.open(
         encoding="utf-8",
@@ -356,6 +362,15 @@ def test_analyze_command_writes_strategy_summary(
     assert rows[0]["strategy"] == "single"
     assert rows[0]["run_count"] == "1"
     assert rows[0]["pass_rate"] == "1.0"
+
+    with comparison_path.open(
+        encoding="utf-8",
+        newline="",
+    ) as source:
+        comparison_rows = list(csv.DictReader(source))
+
+    assert comparison_rows == []
+
 
 def test_run_command_requires_api_key(
     tmp_path: Path,

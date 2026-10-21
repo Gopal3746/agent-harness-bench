@@ -97,6 +97,63 @@ def write_summary_csv(
             row["strategy"] = summary.strategy.value
             writer.writerow(row)
 
+def compare_strategies(
+    summaries: Sequence[StrategySummary],
+    *,
+    baseline: ExecutionStrategy = ExecutionStrategy.SINGLE,
+) -> tuple[StrategyComparison, ...]:
+    """Compare every non-baseline strategy with the baseline."""
+
+    by_strategy = {
+        summary.strategy: summary
+        for summary in summaries
+    }
+
+    try:
+        baseline_summary = by_strategy[baseline]
+    except KeyError as error:
+        raise ValueError(
+            f"baseline strategy {baseline.value!r} is missing"
+        ) from error
+
+    return tuple(
+        _compare_summary(baseline_summary, summary)
+        for summary in summaries
+        if summary.strategy is not baseline
+    )
+
+
+def write_comparison_csv(
+    path: Path,
+    comparisons: Sequence[StrategyComparison],
+) -> None:
+    """Write baseline-relative strategy comparisons to CSV."""
+
+    output = path.expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = tuple(
+        StrategyComparison.__dataclass_fields__
+    )
+
+    with output.open(
+        "w",
+        encoding="utf-8",
+        newline="",
+    ) as destination:
+        writer = csv.DictWriter(
+            destination,
+            fieldnames=fieldnames,
+        )
+        writer.writeheader()
+
+        for comparison in comparisons:
+            row = asdict(comparison)
+            row["baseline_strategy"] = (
+                comparison.baseline_strategy.value
+            )
+            row["strategy"] = comparison.strategy.value
+            writer.writerow(row)
+
 def _summarize_strategy(
     strategy: ExecutionStrategy,
     records: Sequence[RunRecord],
@@ -139,6 +196,83 @@ def _summarize_strategy(
         ),
     )
 
+@dataclass(frozen=True, slots=True)
+class StrategyComparison:
+    """Relative metrics for one strategy against a baseline."""
+
+    baseline_strategy: ExecutionStrategy
+    strategy: ExecutionStrategy
+    wall_time_speedup: float | None
+    wall_time_change_pct: float | None
+    pass_rate_change_pp: float
+    input_tokens_change_pct: float | None
+    output_tokens_change_pct: float | None
+    cost_per_run_change_pct: float | None
+
+def _compare_summary(
+    baseline: StrategySummary,
+    candidate: StrategySummary,
+) -> StrategyComparison:
+    baseline_cost_per_run = _cost_per_run(baseline)
+    candidate_cost_per_run = _cost_per_run(candidate)
+
+    return StrategyComparison(
+        baseline_strategy=baseline.strategy,
+        strategy=candidate.strategy,
+        wall_time_speedup=_safe_ratio(
+            baseline.mean_wall_time_ms,
+            candidate.mean_wall_time_ms,
+        ),
+        wall_time_change_pct=_percent_change(
+            candidate.mean_wall_time_ms,
+            baseline.mean_wall_time_ms,
+        ),
+        pass_rate_change_pp=(
+            candidate.pass_rate - baseline.pass_rate
+        )
+        * 100,
+        input_tokens_change_pct=_percent_change(
+            candidate.mean_input_tokens,
+            baseline.mean_input_tokens,
+        ),
+        output_tokens_change_pct=_percent_change(
+            candidate.mean_output_tokens,
+            baseline.mean_output_tokens,
+        ),
+        cost_per_run_change_pct=_percent_change(
+            candidate_cost_per_run,
+            baseline_cost_per_run,
+        ),
+    )
+
+
+def _cost_per_run(
+    summary: StrategySummary,
+) -> float | None:
+    if summary.total_cost_usd is None:
+        return None
+
+    return summary.total_cost_usd / summary.run_count
+
+
+def _safe_ratio(
+    numerator: float | None,
+    denominator: float | None,
+) -> float | None:
+    if numerator is None or denominator in (None, 0):
+        return None
+
+    return numerator / denominator
+
+
+def _percent_change(
+    value: float | None,
+    baseline: float | None,
+) -> float | None:
+    if value is None or baseline in (None, 0):
+        return None
+
+    return ((value - baseline) / baseline) * 100
 
 def _optional_mean(
     values: Iterable[float | int | None],

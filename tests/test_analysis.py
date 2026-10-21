@@ -10,7 +10,9 @@ from agent_harness import (
     ExecutionStrategy,
     JsonlRunWriter,
     RunRecord,
+    StrategySummary,
     VerificationMetrics,
+    compare_strategies,
     load_run_records,
     summarize_records,
 )
@@ -172,3 +174,75 @@ def test_load_run_records_reports_invalid_line(
 
     with pytest.raises(ValueError, match="line 2"):
         load_run_records(output)
+
+
+def test_compare_strategies_reports_baseline_relative_changes() -> None:
+    summaries = (
+        StrategySummary(
+            strategy=ExecutionStrategy.SINGLE,
+            run_count=2,
+            passed_count=1,
+            pass_rate=0.5,
+            mean_wall_time_ms=200.0,
+            median_wall_time_ms=200.0,
+            mean_ttft_ms=20.0,
+            mean_output_tokens_per_second=50.0,
+            mean_model_calls=2.0,
+            mean_tool_calls=3.0,
+            mean_input_tokens=200.0,
+            mean_output_tokens=40.0,
+            total_cost_usd=0.04,
+        ),
+        StrategySummary(
+            strategy=ExecutionStrategy.PARALLEL,
+            run_count=2,
+            passed_count=2,
+            pass_rate=1.0,
+            mean_wall_time_ms=100.0,
+            median_wall_time_ms=100.0,
+            mean_ttft_ms=25.0,
+            mean_output_tokens_per_second=60.0,
+            mean_model_calls=3.0,
+            mean_tool_calls=4.0,
+            mean_input_tokens=300.0,
+            mean_output_tokens=50.0,
+            total_cost_usd=0.06,
+        ),
+    )
+
+    (comparison,) = compare_strategies(summaries)
+
+    assert comparison.baseline_strategy is ExecutionStrategy.SINGLE
+    assert comparison.strategy is ExecutionStrategy.PARALLEL
+    assert comparison.wall_time_speedup == 2.0
+    assert comparison.wall_time_change_pct == -50.0
+    assert comparison.pass_rate_change_pp == 50.0
+    assert comparison.input_tokens_change_pct == 50.0
+    assert comparison.output_tokens_change_pct == 25.0
+    assert comparison.cost_per_run_change_pct == pytest.approx(50.0)
+
+
+def test_compare_strategies_requires_selected_baseline() -> None:
+    summaries = summarize_records(
+        (
+            make_record(
+                "parallel-1",
+                ExecutionStrategy.PARALLEL,
+                passed=True,
+                wall_time_ms=80.0,
+                ttft_ms=None,
+                throughput=None,
+                model_calls=2,
+                tool_calls=1,
+                input_tokens=None,
+                output_tokens=None,
+                cost_usd=None,
+            ),
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="baseline strategy 'single'",
+    ):
+        compare_strategies(summaries)
