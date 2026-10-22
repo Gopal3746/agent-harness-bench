@@ -24,6 +24,9 @@ from agent_harness.models import (
     ExecutionStrategy,
     TaskSpec,
 )
+from agent_harness.plotting import (
+    plot_strategy_dashboard,
+)
 from agent_harness.runner import TaskRunner
 from agent_harness.telemetry import JsonlRunWriter
 from agent_harness.workspace import WorkspaceManager
@@ -215,7 +218,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=ExecutionStrategy.SINGLE,
         help="comparison baseline strategy (default: single)",
     )
+    analyze_parser.add_argument(
+        "--plot-output",
+        type=Path,
+        default=Path(
+            "results/strategy-dashboard.png"
+        ),
+        help=(
+            "strategy dashboard PNG path "
+            "(default: results/strategy-dashboard.png)"
+        ),
+    )
     return parser
+
 
 
 def load_task(path: Path) -> TaskSpec:
@@ -402,6 +417,10 @@ def _analyze_runs(arguments: argparse.Namespace) -> int:
         arguments.comparison_output,
         comparisons,
     )
+    plot_strategy_dashboard(
+        summaries,
+        arguments.plot_output,
+    )
 
     print(
         json.dumps(
@@ -417,6 +436,9 @@ def _analyze_runs(arguments: argparse.Namespace) -> int:
                     summary.strategy.value
                     for summary in summaries
                 ],
+                "plot_output": str(
+                    arguments.plot_output
+                ),
             },
             sort_keys=True,
         )

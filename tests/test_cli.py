@@ -311,6 +311,7 @@ def test_analyze_command_writes_strategy_summary(
     runs = tmp_path / "runs.jsonl"
     summary_path = tmp_path / "summary.csv"
     comparison_path = tmp_path / "comparisons.csv"
+    plot_path = tmp_path / "strategy-dashboard.png"
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
     monkeypatch.setattr(
@@ -342,6 +343,8 @@ def test_analyze_command_writes_strategy_summary(
             str(summary_path),
             "--comparison-output",
             str(comparison_path),
+            "--plot-output",
+            str(plot_path),
         ]
     )
 
@@ -351,6 +354,7 @@ def test_analyze_command_writes_strategy_summary(
     assert output["run_count"] == 1
     assert output["strategies"] == ["single"]
     assert output["baseline"] == "single"
+    assert output["plot_output"] == str(plot_path)
 
     with summary_path.open(
         encoding="utf-8",
@@ -369,7 +373,10 @@ def test_analyze_command_writes_strategy_summary(
     ) as source:
         comparison_rows = list(csv.DictReader(source))
 
-    assert comparison_rows == []
+        assert comparison_rows == []
+    assert plot_path.read_bytes().startswith(
+        b"\x89PNG\r\n\x1a\n"
+    )
 
 
 def test_run_command_requires_api_key(

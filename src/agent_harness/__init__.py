@@ -48,6 +48,9 @@ from agent_harness.models import (
     ExecutionStrategy,
     TaskSpec,
 )
+from agent_harness.plotting import (
+    plot_strategy_dashboard,
+)
 from agent_harness.runner import (
     AgentResult,
     SingleTaskRunner,
@@ -136,6 +139,7 @@ __all__ = [
     "compare_strategies",
     "load_run_records",
     "merge_change_sets",
+    "plot_strategy_dashboard",
     "summarize_records",
     "write_comparison_csv",
     "write_summary_csv",
