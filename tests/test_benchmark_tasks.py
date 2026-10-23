@@ -32,3 +32,35 @@ def test_input_validation_task_has_reproducible_failing_baseline(
     assert result.succeeded is False
     assert result.exit_code == 1
     assert "5 failed, 4 passed" in result.stdout
+
+def test_ttl_cache_task_has_reproducible_failing_baseline(
+    tmp_path: Path,
+) -> None:
+    task_root = (
+        Path(__file__).parents[1]
+        / "benchmarks"
+        / "tasks"
+        / "ttl-cache"
+    )
+    task = load_task(task_root / "task.json")
+    workspaces = WorkspaceManager(
+        tmp_path / "workspaces"
+    )
+
+    with workspaces.provision(
+        task,
+        run_id="ttl-cache-baseline",
+    ) as workspace:
+        result = CommandRunner(
+            workspace.path
+        ).run_tests(task)
+
+    assert task.task_id == "ttl-cache-expiration"
+    assert task.tags == (
+        "cache",
+        "stateful",
+        "tightly-coupled",
+    )
+    assert result.succeeded is False
+    assert result.exit_code == 1
+    assert "5 failed, 4 passed" in result.stdout

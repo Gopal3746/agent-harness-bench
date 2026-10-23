@@ -1,0 +1,17 @@
+{
+  "task_id": "ttl-cache-expiration",
+  "instruction": "Implement expiration semantics for TtlCache. Store an expiration deadline using the injected clock, treat entries as expired when the current time is greater than or equal to the deadline, and lazily remove expired entries from get() and size. Overwriting an entry must reset its expiration. Reject ttl_seconds values less than or equal to zero with a ValueError containing 'ttl_seconds'. Keep the existing public API unchanged and make all tests pass.",
+  "source_dir": "repository",
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q"
+  ],
+  "timeout_seconds": 30,
+  "tags": [
+    "cache",
+    "stateful",
+    "tightly-coupled"
+  ]
+}
