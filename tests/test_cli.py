@@ -397,3 +397,28 @@ def test_run_command_requires_api_key(
         )
 
     assert exc_info.value.code == 2
+
+def test_tasks_command_lists_benchmark_catalog(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_root = Path(__file__).parents[1]
+
+    exit_code = cli.main(
+        [
+            "tasks",
+            str(project_root / "benchmarks" / "tasks"),
+        ]
+    )
+
+    assert exit_code == 0
+
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["task_count"] == 2
+    assert [
+        task["task_id"]
+        for task in output["tasks"]
+    ] == [
+        "input-validation",
+        "ttl-cache-expiration",
+    ]

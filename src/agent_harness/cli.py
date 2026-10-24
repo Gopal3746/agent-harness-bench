@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -6,7 +5,6 @@ import json
 import os
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -22,12 +20,15 @@ from agent_harness.llm import OpenRouterClient
 from agent_harness.models import (
     BenchmarkConfig,
     ExecutionStrategy,
-    TaskSpec,
 )
 from agent_harness.plotting import (
     plot_strategy_dashboard,
 )
 from agent_harness.runner import TaskRunner
+from agent_harness.task_catalog import (
+    discover_tasks,
+    load_task,
+)
 from agent_harness.telemetry import JsonlRunWriter
 from agent_harness.workspace import WorkspaceManager
 
@@ -229,31 +230,21 @@ def build_parser() -> argparse.ArgumentParser:
             "(default: results/strategy-dashboard.png)"
         ),
     )
-    return parser
-
-
-
-def load_task(path: Path) -> TaskSpec:
-    """Load a task, resolving its source directory by the JSON file."""
-
-    resolved_path = path.expanduser().resolve()
-    payload: Any = json.loads(
-        resolved_path.read_text(encoding="utf-8")
+    tasks_parser = subparsers.add_parser(
+        "tasks",
+        help="list validated benchmark tasks",
     )
-
-    if isinstance(payload, dict):
-        source_dir = payload.get("source_dir")
-
-        if isinstance(source_dir, str):
-            source_path = Path(source_dir).expanduser()
-
-            if not source_path.is_absolute():
-                source_path = resolved_path.parent / source_path
-
-            payload["source_dir"] = source_path.resolve()
-
-    return TaskSpec.model_validate(payload)
-
+    tasks_parser.add_argument(
+        "root",
+        type=Path,
+        nargs="?",
+        default=Path("benchmarks/tasks"),
+        help=(
+            "benchmark task directory "
+            "(default: benchmarks/tasks)"
+        ),
+    )
+    return parser
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
@@ -269,6 +260,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if arguments.command == "benchmark":
             return _run_benchmark(arguments)
+
+        if arguments.command == "tasks":
+            return _list_tasks(arguments)
 
         if arguments.command == "analyze":
             return _analyze_runs(arguments)
@@ -440,6 +434,31 @@ def _analyze_runs(arguments: argparse.Namespace) -> int:
                     arguments.plot_output
                 ),
             },
+            sort_keys=True,
+        )
+    )
+
+    return 0
+
+def _list_tasks(arguments: argparse.Namespace) -> int:
+    tasks = discover_tasks(arguments.root)
+
+    print(
+        json.dumps(
+            {
+                "root": str(
+                    arguments.root.expanduser().resolve()
+                ),
+                "task_count": len(tasks),
+                "tasks": [
+                    {
+                        "task_id": task.task_id,
+                        "tags": task.tags,
+                    }
+                    for task in tasks
+                ],
+            },
+            indent=2,
             sort_keys=True,
         )
     )

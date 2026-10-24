@@ -57,6 +57,10 @@ from agent_harness.runner import (
     TaskRunner,
     TaskRunResult,
 )
+from agent_harness.task_catalog import (
+    discover_tasks,
+    load_task,
+)
 from agent_harness.telemetry import (
     JsonlRunWriter,
     ModelCallMetrics,
@@ -137,7 +141,9 @@ __all__ = [
     "build_tool_schemas",
     "clone_workspace",
     "compare_strategies",
+    "discover_tasks",
     "load_run_records",
+    "load_task",
     "merge_change_sets",
     "plot_strategy_dashboard",
     "summarize_records",
