@@ -57,6 +57,10 @@ from agent_harness.runner import (
     TaskRunner,
     TaskRunResult,
 )
+from agent_harness.suite import (
+    BenchmarkSuiteResult,
+    BenchmarkSuiteRunner,
+)
 from agent_harness.task_catalog import (
     discover_tasks,
     load_task,
@@ -93,6 +97,8 @@ __all__ = [
     "BenchmarkConfig",
     "BenchmarkResult",
     "BenchmarkRunner",
+    "BenchmarkSuiteResult",
+    "BenchmarkSuiteRunner",
     "ChatClient",
     "ChatCompletionResult",
     "CommandResult",
