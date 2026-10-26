@@ -78,7 +78,12 @@ class FakeOpenRouterClient:
         return None
 
 
-def write_task(tmp_path: Path, *, passing: bool = True) -> Path:
+def write_task(
+    tmp_path: Path,
+    *,
+    passing: bool = True,
+    task_id: str = "sample-task",
+) -> Path:
     repository = tmp_path / "repository"
     repository.mkdir()
     (repository / "app.py").write_text(
@@ -91,7 +96,7 @@ def write_task(tmp_path: Path, *, passing: bool = True) -> Path:
     manifest.write_text(
         json.dumps(
             {
-                "task_id": "sample-task",
+                "task_id": task_id,
                 "instruction": "Ensure VALUE is correct.",
                 "source_dir": "repository",
                 "test_command": [
@@ -422,3 +427,75 @@ def test_tasks_command_lists_benchmark_catalog(
         "input-validation",
         "ttl-cache-expiration",
     ]
+
+def test_benchmark_suite_runs_discovered_tasks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    catalog = tmp_path / "catalog"
+    first_task = catalog / "first"
+    second_task = catalog / "second"
+    first_task.mkdir(parents=True)
+    second_task.mkdir(parents=True)
+
+    write_task(
+        first_task,
+        task_id="task-a",
+    )
+    write_task(
+        second_task,
+        task_id="task-b",
+    )
+
+    output_path = tmp_path / "suite-runs.jsonl"
+
+    monkeypatch.setenv(
+        "OPENROUTER_API_KEY",
+        "test-secret",
+    )
+    monkeypatch.setattr(
+        cli,
+        "OpenRouterClient",
+        FakeOpenRouterClient,
+    )
+
+    exit_code = cli.main(
+        [
+            "benchmark-suite",
+            str(catalog),
+            "--model",
+            "test/model",
+            "--strategy",
+            "single",
+            "--repetitions",
+            "1",
+            "--suite-id",
+            "cli-suite",
+            "--output",
+            str(output_path),
+            "--workspace-root",
+            str(tmp_path / "workspaces"),
+        ]
+    )
+
+    assert exit_code == 0
+
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["suite_id"] == "cli-suite"
+    assert output["task_count"] == 2
+    assert output["total_runs"] == 2
+    assert output["passed_runs"] == 2
+    assert output["pass_rate"] == 1.0
+    assert output["strategies"] == ["single"]
+
+    records = output_path.read_text(
+        encoding="utf-8"
+    ).splitlines()
+
+    assert len(records) == 2
+    assert {
+        json.loads(record)["task_id"]
+        for record in records
+    } == {"task-a", "task-b"}
