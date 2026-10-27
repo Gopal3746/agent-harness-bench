@@ -249,6 +249,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional stable suite identifier",
     )
     suite_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "show the planned experiment without "
+            "calling the model"
+        ),
+    )
+    suite_parser.add_argument(
         "--max-steps",
         type=int,
         default=20,
@@ -482,17 +490,6 @@ def _run_benchmark(arguments: argparse.Namespace) -> int:
 def _run_benchmark_suite(
     arguments: argparse.Namespace,
 ) -> int:
-    api_key = os.environ.get(
-        "OPENROUTER_API_KEY",
-        "",
-    )
-
-    if not api_key.strip():
-        raise ValueError(
-            "OPENROUTER_API_KEY environment variable "
-            "is required"
-        )
-
     tasks = discover_tasks(arguments.root)
     strategies = tuple(
         arguments.strategies or ExecutionStrategy
@@ -506,6 +503,48 @@ def _run_benchmark_suite(
         max_steps=arguments.max_steps,
         seed=arguments.seed,
     )
+
+    planned_runs = (
+        len(tasks)
+        * len(config.strategies)
+        * config.repetitions
+    )
+
+    if arguments.dry_run:
+        print(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "model": config.model,
+                    "planned_runs": planned_runs,
+                    "repetitions": config.repetitions,
+                    "strategies": [
+                        strategy.value
+                        for strategy in config.strategies
+                    ],
+                    "suite_id": arguments.suite_id,
+                    "task_count": len(tasks),
+                    "task_ids": [
+                        task.task_id
+                        for task in tasks
+                    ],
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    api_key = os.environ.get(
+        "OPENROUTER_API_KEY",
+        "",
+    )
+
+    if not api_key.strip():
+        raise ValueError(
+            "OPENROUTER_API_KEY environment variable "
+            "is required"
+        )
+
     workspaces = WorkspaceManager(
         arguments.workspace_root,
         retain_workspaces=arguments.retain_workspace,

@@ -499,3 +499,72 @@ def test_benchmark_suite_runs_discovered_tasks(
         json.loads(record)["task_id"]
         for record in records
     } == {"task-a", "task-b"}
+
+def test_benchmark_suite_dry_run_needs_no_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    catalog = tmp_path / "catalog"
+    first_task = catalog / "first"
+    second_task = catalog / "second"
+    first_task.mkdir(parents=True)
+    second_task.mkdir(parents=True)
+
+    write_task(
+        first_task,
+        task_id="task-a",
+    )
+    write_task(
+        second_task,
+        task_id="task-b",
+    )
+
+    output_path = tmp_path / "runs.jsonl"
+
+    monkeypatch.delenv(
+        "OPENROUTER_API_KEY",
+        raising=False,
+    )
+    FakeOpenRouterClient.api_keys.clear()
+
+    exit_code = cli.main(
+        [
+            "benchmark-suite",
+            str(catalog),
+            "--model",
+            "test/model",
+            "--strategy",
+            "single",
+            "--strategy",
+            "parallel",
+            "--repetitions",
+            "3",
+            "--suite-id",
+            "dry-run-suite",
+            "--output",
+            str(output_path),
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["dry_run"] is True
+    assert output["suite_id"] == "dry-run-suite"
+    assert output["task_count"] == 2
+    assert output["task_ids"] == [
+        "task-a",
+        "task-b",
+    ]
+    assert output["strategies"] == [
+        "single",
+        "parallel",
+    ]
+    assert output["repetitions"] == 3
+    assert output["planned_runs"] == 12
+
+    assert FakeOpenRouterClient.api_keys == []
+    assert not output_path.exists()
