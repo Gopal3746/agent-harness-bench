@@ -1,0 +1,17 @@
+{
+  "task_id": "service-retries",
+  "instruction": "Add retry handling to the user, billing, and inventory service clients. Each public client function must retry TimeoutError failures up to max_attempts, return the successful result, re-raise the final TimeoutError after all attempts are exhausted, and reject max_attempts values below 1 with a ValueError mentioning max_attempts. Other exception types must be raised immediately without retrying. Preserve the existing public function names and signatures.",
+  "source_dir": "repository",
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q"
+  ],
+  "timeout_seconds": 30,
+  "tags": [
+    "retries",
+    "multi-module",
+    "decomposable"
+  ]
+}
