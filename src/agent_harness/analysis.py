@@ -51,6 +51,53 @@ def load_run_records(path: Path) -> tuple[RunRecord, ...]:
 
     return tuple(records)
 
+@dataclass(frozen=True, slots=True)
+class TaskStrategySummary:
+    """Aggregate metrics for one task and strategy."""
+
+    task_id: str
+    strategy: ExecutionStrategy
+    run_count: int
+    passed_count: int
+    pass_rate: float
+    mean_wall_time_ms: float
+    median_wall_time_ms: float
+    mean_ttft_ms: float | None
+    mean_output_tokens_per_second: float | None
+    mean_model_calls: float
+    mean_tool_calls: float
+    mean_input_tokens: float | None
+    mean_output_tokens: float | None
+    total_cost_usd: float | None
+
+def summarize_records_by_task(
+    records: Sequence[RunRecord],
+) -> tuple[TaskStrategySummary, ...]:
+    """Aggregate metrics by task and orchestration strategy."""
+
+    grouped: dict[
+        tuple[str, ExecutionStrategy],
+        list[RunRecord],
+    ] = defaultdict(list)
+
+    for record in records:
+        key = (record.task_id, record.strategy)
+        grouped[key].append(record)
+
+    task_ids = sorted(
+        {record.task_id for record in records}
+    )
+
+    return tuple(
+        _summarize_task_strategy(
+            task_id,
+            strategy,
+            grouped[(task_id, strategy)],
+        )
+        for task_id in task_ids
+        for strategy in ExecutionStrategy
+        if (task_id, strategy) in grouped
+    )
 
 def summarize_records(
     records: Sequence[RunRecord],
@@ -80,6 +127,34 @@ def write_summary_csv(
     output = path.expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = tuple(StrategySummary.__dataclass_fields__)
+
+    with output.open(
+        "w",
+        encoding="utf-8",
+        newline="",
+    ) as destination:
+        writer = csv.DictWriter(
+            destination,
+            fieldnames=fieldnames,
+        )
+        writer.writeheader()
+
+        for summary in summaries:
+            row = asdict(summary)
+            row["strategy"] = summary.strategy.value
+            writer.writerow(row)
+
+def write_task_summary_csv(
+    path: Path,
+    summaries: Sequence[TaskStrategySummary],
+) -> None:
+    """Write per-task strategy summaries to CSV."""
+
+    output = path.expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = tuple(
+        TaskStrategySummary.__dataclass_fields__
+    )
 
     with output.open(
         "w",
@@ -194,6 +269,35 @@ def _summarize_strategy(
         total_cost_usd=(
             sum(reported_costs) if reported_costs else None
         ),
+    )
+
+def _summarize_task_strategy(
+    task_id: str,
+    strategy: ExecutionStrategy,
+    records: Sequence[RunRecord],
+) -> TaskStrategySummary:
+    summary = _summarize_strategy(
+        strategy,
+        records,
+    )
+
+    return TaskStrategySummary(
+        task_id=task_id,
+        strategy=summary.strategy,
+        run_count=summary.run_count,
+        passed_count=summary.passed_count,
+        pass_rate=summary.pass_rate,
+        mean_wall_time_ms=summary.mean_wall_time_ms,
+        median_wall_time_ms=summary.median_wall_time_ms,
+        mean_ttft_ms=summary.mean_ttft_ms,
+        mean_output_tokens_per_second=(
+            summary.mean_output_tokens_per_second
+        ),
+        mean_model_calls=summary.mean_model_calls,
+        mean_tool_calls=summary.mean_tool_calls,
+        mean_input_tokens=summary.mean_input_tokens,
+        mean_output_tokens=summary.mean_output_tokens,
+        total_cost_usd=summary.total_cost_usd,
     )
 
 @dataclass(frozen=True, slots=True)

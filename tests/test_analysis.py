@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from agent_harness import (
     compare_strategies,
     load_run_records,
     summarize_records,
+    summarize_records_by_task,
+    write_task_summary_csv,
 )
 
 
@@ -22,6 +25,7 @@ def make_record(
     run_id: str,
     strategy: ExecutionStrategy,
     *,
+    task_id: str = "sample-task",
     passed: bool,
     wall_time_ms: float,
     ttft_ms: float | None,
@@ -35,7 +39,7 @@ def make_record(
     return RunRecord(
         recorded_at=datetime(2026, 1, 1, tzinfo=UTC),
         run_id=run_id,
-        task_id="sample-task",
+        task_id=task_id,
         strategy=strategy,
         model="test/model",
         passed=passed,
@@ -246,3 +250,108 @@ def test_compare_strategies_requires_selected_baseline() -> None:
         match="baseline strategy 'single'",
     ):
         compare_strategies(summaries)
+
+def test_summarize_records_by_task_and_strategy() -> None:
+    records = (
+        make_record(
+            "task-b-parallel",
+            ExecutionStrategy.PARALLEL,
+            task_id="task-b",
+            passed=True,
+            wall_time_ms=80.0,
+            ttft_ms=8.0,
+            throughput=50.0,
+            model_calls=2,
+            tool_calls=3,
+            input_tokens=120,
+            output_tokens=30,
+            cost_usd=0.02,
+        ),
+        make_record(
+            "task-a-parallel",
+            ExecutionStrategy.PARALLEL,
+            task_id="task-a",
+            passed=False,
+            wall_time_ms=150.0,
+            ttft_ms=15.0,
+            throughput=40.0,
+            model_calls=3,
+            tool_calls=4,
+            input_tokens=200,
+            output_tokens=50,
+            cost_usd=0.03,
+        ),
+        make_record(
+            "task-a-single",
+            ExecutionStrategy.SINGLE,
+            task_id="task-a",
+            passed=True,
+            wall_time_ms=200.0,
+            ttft_ms=20.0,
+            throughput=30.0,
+            model_calls=1,
+            tool_calls=2,
+            input_tokens=100,
+            output_tokens=20,
+            cost_usd=0.01,
+        ),
+    )
+
+    summaries = summarize_records_by_task(records)
+
+    assert [
+        (summary.task_id, summary.strategy)
+        for summary in summaries
+    ] == [
+        ("task-a", ExecutionStrategy.SINGLE),
+        ("task-a", ExecutionStrategy.PARALLEL),
+        ("task-b", ExecutionStrategy.PARALLEL),
+    ]
+
+    task_a_single = summaries[0]
+
+    assert task_a_single.run_count == 1
+    assert task_a_single.passed_count == 1
+    assert task_a_single.pass_rate == 1.0
+    assert task_a_single.mean_wall_time_ms == 200.0
+    assert task_a_single.mean_input_tokens == 100.0
+    assert task_a_single.total_cost_usd == 0.01
+
+def test_write_task_summary_csv(
+    tmp_path: Path,
+) -> None:
+    records = (
+        make_record(
+            "task-a-single",
+            ExecutionStrategy.SINGLE,
+            task_id="task-a",
+            passed=True,
+            wall_time_ms=100.0,
+            ttft_ms=10.0,
+            throughput=40.0,
+            model_calls=1,
+            tool_calls=2,
+            input_tokens=100,
+            output_tokens=20,
+            cost_usd=0.01,
+        ),
+    )
+    output = tmp_path / "task-summary.csv"
+
+    write_task_summary_csv(
+        output,
+        summarize_records_by_task(records),
+    )
+
+    with output.open(
+        encoding="utf-8",
+        newline="",
+    ) as source:
+        rows = list(csv.DictReader(source))
+
+    assert len(rows) == 1
+    assert rows[0]["task_id"] == "task-a"
+    assert rows[0]["strategy"] == "single"
+    assert rows[0]["run_count"] == "1"
+    assert rows[0]["pass_rate"] == "1.0"
+    assert rows[0]["mean_wall_time_ms"] == "100.0"

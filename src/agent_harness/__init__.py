@@ -26,11 +26,14 @@ from agent_harness.agent import (
 from agent_harness.analysis import (
     StrategyComparison,
     StrategySummary,
+    TaskStrategySummary,
     compare_strategies,
     load_run_records,
     summarize_records,
+    summarize_records_by_task,
     write_comparison_csv,
     write_summary_csv,
+    write_task_summary_csv,
 )
 from agent_harness.benchmark import (
     BenchmarkResult,
@@ -130,6 +133,7 @@ __all__ = [
     "TaskRunResult",
     "TaskRunner",
     "TaskSpec",
+    "TaskStrategySummary",
     "TaskWorkspace",
     "TokenUsage",
     "ToolCallMetrics",
@@ -153,6 +157,8 @@ __all__ = [
     "merge_change_sets",
     "plot_strategy_dashboard",
     "summarize_records",
+    "summarize_records_by_task",
     "write_comparison_csv",
     "write_summary_csv",
+    "write_task_summary_csv",
 ]
