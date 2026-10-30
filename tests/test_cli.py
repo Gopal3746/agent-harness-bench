@@ -315,10 +315,14 @@ def test_analyze_command_writes_strategy_summary(
     manifest = write_task(tmp_path)
     runs = tmp_path / "runs.jsonl"
     summary_path = tmp_path / "summary.csv"
+    task_summary_path = tmp_path / "task-summary.csv"
     comparison_path = tmp_path / "comparisons.csv"
     plot_path = tmp_path / "strategy-dashboard.png"
 
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
+    monkeypatch.setenv(
+        "OPENROUTER_API_KEY",
+        "test-secret",
+    )
     monkeypatch.setattr(
         cli,
         "OpenRouterClient",
@@ -346,6 +350,8 @@ def test_analyze_command_writes_strategy_summary(
             str(runs),
             "--output",
             str(summary_path),
+            "--task-output",
+            str(task_summary_path),
             "--comparison-output",
             str(comparison_path),
             "--plot-output",
@@ -356,10 +362,14 @@ def test_analyze_command_writes_strategy_summary(
     assert exit_code == 0
 
     output = json.loads(capsys.readouterr().out)
+
     assert output["run_count"] == 1
     assert output["strategies"] == ["single"]
     assert output["baseline"] == "single"
     assert output["plot_output"] == str(plot_path)
+    assert output["task_output"] == str(
+        task_summary_path
+    )
 
     with summary_path.open(
         encoding="utf-8",
@@ -372,13 +382,27 @@ def test_analyze_command_writes_strategy_summary(
     assert rows[0]["run_count"] == "1"
     assert rows[0]["pass_rate"] == "1.0"
 
+    with task_summary_path.open(
+        encoding="utf-8",
+        newline="",
+    ) as source:
+        task_rows = list(csv.DictReader(source))
+
+    assert len(task_rows) == 1
+    assert task_rows[0]["task_id"] == "sample-task"
+    assert task_rows[0]["strategy"] == "single"
+    assert task_rows[0]["run_count"] == "1"
+    assert task_rows[0]["pass_rate"] == "1.0"
+
     with comparison_path.open(
         encoding="utf-8",
         newline="",
     ) as source:
-        comparison_rows = list(csv.DictReader(source))
+        comparison_rows = list(
+            csv.DictReader(source)
+        )
 
-        assert comparison_rows == []
+    assert comparison_rows == []
     assert plot_path.read_bytes().startswith(
         b"\x89PNG\r\n\x1a\n"
     )

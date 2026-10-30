@@ -12,8 +12,10 @@ from agent_harness.analysis import (
     compare_strategies,
     load_run_records,
     summarize_records,
+    summarize_records_by_task,
     write_comparison_csv,
     write_summary_csv,
+    write_task_summary_csv,
 )
 from agent_harness.benchmark import BenchmarkRunner
 from agent_harness.llm import OpenRouterClient
@@ -39,7 +41,9 @@ PROGRAM_DESCRIPTION = (
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=PROGRAM_DESCRIPTION)
+    parser = argparse.ArgumentParser(
+        description=PROGRAM_DESCRIPTION
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -47,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command")
+
     run_parser = subparsers.add_parser(
         "run",
         help="run and verify one coding task",
@@ -78,13 +83,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=Path("results/runs.jsonl"),
-        help="JSONL results path (default: results/runs.jsonl)",
+        help=(
+            "JSONL results path "
+            "(default: results/runs.jsonl)"
+        ),
     )
     run_parser.add_argument(
         "--workspace-root",
         type=Path,
         default=Path("workspaces"),
-        help="isolated workspace directory (default: workspaces)",
+        help=(
+            "isolated workspace directory "
+            "(default: workspaces)"
+        ),
     )
     run_parser.add_argument(
         "--run-id",
@@ -113,6 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="keep the workspace after the run",
     )
+
     benchmark_parser = subparsers.add_parser(
         "benchmark",
         help="run a controlled multi-strategy experiment",
@@ -134,8 +146,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=ExecutionStrategy,
         choices=tuple(ExecutionStrategy),
         help=(
-            "strategy to benchmark; repeat this option to select "
-            "multiple strategies (default: all)"
+            "strategy to benchmark; repeat this option "
+            "to select multiple strategies (default: all)"
         ),
     )
     benchmark_parser.add_argument(
@@ -154,13 +166,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=Path("results/runs.jsonl"),
-        help="JSONL results path (default: results/runs.jsonl)",
+        help=(
+            "JSONL results path "
+            "(default: results/runs.jsonl)"
+        ),
     )
     benchmark_parser.add_argument(
         "--workspace-root",
         type=Path,
         default=Path("workspaces"),
-        help="isolated workspace directory (default: workspaces)",
+        help=(
+            "isolated workspace directory "
+            "(default: workspaces)"
+        ),
     )
     benchmark_parser.add_argument(
         "--experiment-id",
@@ -189,6 +207,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="keep workspaces after each run",
     )
+
     suite_parser = subparsers.add_parser(
         "benchmark-suite",
         help="run every task in a benchmark catalog",
@@ -279,6 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="keep workspaces after each run",
     )
+
     analyze_parser = subparsers.add_parser(
         "analyze",
         help="summarize benchmark JSONL by strategy",
@@ -292,7 +312,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=Path("results/summary.csv"),
-        help="summary CSV path (default: results/summary.csv)",
+        help=(
+            "summary CSV path "
+            "(default: results/summary.csv)"
+        ),
+    )
+    analyze_parser.add_argument(
+        "--task-output",
+        type=Path,
+        default=Path("results/task-summary.csv"),
+        help=(
+            "per-task strategy CSV path "
+            "(default: results/task-summary.csv)"
+        ),
     )
     analyze_parser.add_argument(
         "--comparison-output",
@@ -308,7 +340,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=ExecutionStrategy,
         choices=tuple(ExecutionStrategy),
         default=ExecutionStrategy.SINGLE,
-        help="comparison baseline strategy (default: single)",
+        help=(
+            "comparison baseline strategy "
+            "(default: single)"
+        ),
     )
     analyze_parser.add_argument(
         "--plot-output",
@@ -321,6 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
             "(default: results/strategy-dashboard.png)"
         ),
     )
+
     tasks_parser = subparsers.add_parser(
         "tasks",
         help="list validated benchmark tasks",
@@ -335,7 +371,9 @@ def build_parser() -> argparse.ArgumentParser:
             "(default: benchmarks/tasks)"
         ),
     )
+
     return parser
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
@@ -371,12 +409,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser.error(f"unknown command: {arguments.command}")
 
+
 def _run_task(arguments: argparse.Namespace) -> int:
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    api_key = os.environ.get(
+        "OPENROUTER_API_KEY",
+        "",
+    )
 
     if not api_key.strip():
         raise ValueError(
-            "OPENROUTER_API_KEY environment variable is required"
+            "OPENROUTER_API_KEY environment variable "
+            "is required"
         )
 
     task = load_task(arguments.task)
@@ -408,7 +451,9 @@ def _run_task(arguments: argparse.Namespace) -> int:
             run_id=arguments.run_id,
         )
 
-    record = JsonlRunWriter(arguments.output).append_result(result)
+    record = JsonlRunWriter(
+        arguments.output
+    ).append_result(result)
 
     print(
         json.dumps(
@@ -428,16 +473,25 @@ def _run_task(arguments: argparse.Namespace) -> int:
 
     return 0 if record.passed else 1
 
-def _run_benchmark(arguments: argparse.Namespace) -> int:
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+
+def _run_benchmark(
+    arguments: argparse.Namespace,
+) -> int:
+    api_key = os.environ.get(
+        "OPENROUTER_API_KEY",
+        "",
+    )
 
     if not api_key.strip():
         raise ValueError(
-            "OPENROUTER_API_KEY environment variable is required"
+            "OPENROUTER_API_KEY environment variable "
+            "is required"
         )
 
     task = load_task(arguments.task)
-    strategies = tuple(arguments.strategies or ExecutionStrategy)
+    strategies = tuple(
+        arguments.strategies or ExecutionStrategy
+    )
     config = BenchmarkConfig(
         model=arguments.model,
         strategies=strategies,
@@ -476,7 +530,8 @@ def _run_benchmark(arguments: argparse.Namespace) -> int:
                 "passed_runs": result.passed_runs,
                 "pass_rate": result.pass_rate,
                 "strategies": [
-                    strategy.value for strategy in config.strategies
+                    strategy.value
+                    for strategy in config.strategies
                 ],
                 "task_id": result.task_id,
                 "total_runs": result.total_runs,
@@ -485,7 +540,12 @@ def _run_benchmark(arguments: argparse.Namespace) -> int:
         )
     )
 
-    return 0 if result.passed_runs == result.total_runs else 1
+    return (
+        0
+        if result.passed_runs == result.total_runs
+        else 1
+    )
+
 
 def _run_benchmark_suite(
     arguments: argparse.Namespace,
@@ -589,19 +649,32 @@ def _run_benchmark_suite(
 
     return 0 if result.all_passed else 1
 
-def _analyze_runs(arguments: argparse.Namespace) -> int:
+
+def _analyze_runs(
+    arguments: argparse.Namespace,
+) -> int:
     records = load_run_records(arguments.input)
 
     if not records:
         raise ValueError("no run records found")
 
     summaries = summarize_records(records)
+    task_summaries = summarize_records_by_task(
+        records
+    )
     comparisons = compare_strategies(
         summaries,
         baseline=arguments.baseline,
     )
 
-    write_summary_csv(arguments.output, summaries)
+    write_summary_csv(
+        arguments.output,
+        summaries,
+    )
+    write_task_summary_csv(
+        arguments.task_output,
+        task_summaries,
+    )
     write_comparison_csv(
         arguments.comparison_output,
         comparisons,
@@ -620,13 +693,16 @@ def _analyze_runs(arguments: argparse.Namespace) -> int:
                 ),
                 "input": str(arguments.input),
                 "output": str(arguments.output),
+                "plot_output": str(
+                    arguments.plot_output
+                ),
                 "run_count": len(records),
                 "strategies": [
                     summary.strategy.value
                     for summary in summaries
                 ],
-                "plot_output": str(
-                    arguments.plot_output
+                "task_output": str(
+                    arguments.task_output
                 ),
             },
             sort_keys=True,
@@ -635,7 +711,10 @@ def _analyze_runs(arguments: argparse.Namespace) -> int:
 
     return 0
 
-def _list_tasks(arguments: argparse.Namespace) -> int:
+
+def _list_tasks(
+    arguments: argparse.Namespace,
+) -> int:
     tasks = discover_tasks(arguments.root)
 
     print(
