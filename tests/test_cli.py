@@ -443,12 +443,15 @@ def test_tasks_command_lists_benchmark_catalog(
 
     output = json.loads(capsys.readouterr().out)
 
-    assert output["task_count"] == 3
+    assert output["task_count"] == 6
     assert [
         task["task_id"]
         for task in output["tasks"]
     ] == [
+        "audit-events",
+        "config-merge",
         "input-validation",
+        "pagination-client",
         "service-retries",
         "ttl-cache-expiration",
     ]

@@ -1,0 +1,17 @@
+{
+  "task_id": "audit-events",
+  "instruction": "Complete the user, billing, and inventory audit-event builders. Each builder must return event, resource_id, source, and metadata fields. Copy the metadata dictionary so callers cannot mutate the input through the returned event. Use an empty dictionary when metadata is omitted. Reject blank or whitespace-only resource_id values with a ValueError mentioning resource_id. Preserve the existing public function names and signatures.",
+  "source_dir": "repository",
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q"
+  ],
+  "timeout_seconds": 30,
+  "tags": [
+    "observability",
+    "multi-module",
+    "decomposable"
+  ]
+}

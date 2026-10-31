@@ -1,98 +1,115 @@
 from pathlib import Path
 
+import pytest
+
 from agent_harness import CommandRunner, WorkspaceManager
 from agent_harness.cli import load_task
 
 _TASK_ROOT = (
-    Path(__file__).parent.parent
+    Path(__file__).parents[1]
     / "benchmarks"
     / "tasks"
-    / "input-validation"
+)
+
+_BENCHMARK_CASES = (
+    (
+        "audit-events",
+        "audit-events",
+        (
+            "observability",
+            "multi-module",
+            "decomposable",
+        ),
+        "9 failed, 3 passed",
+    ),
+    (
+        "config-merge",
+        "config-merge",
+        (
+            "configuration",
+            "recursive",
+            "tightly-coupled",
+        ),
+        "3 failed, 3 passed",
+    ),
+    (
+        "input-validation",
+        "input-validation",
+        (
+            "validation",
+            "multi-module",
+            "decomposable",
+        ),
+        "5 failed, 4 passed",
+    ),
+    (
+        "pagination-client",
+        "pagination-client",
+        (
+            "api-client",
+            "single-module",
+            "non-decomposable",
+        ),
+        "5 failed, 1 passed",
+    ),
+    (
+        "service-retries",
+        "service-retries",
+        (
+            "retries",
+            "multi-module",
+            "decomposable",
+        ),
+        "9 failed, 6 passed",
+    ),
+    (
+        "ttl-cache",
+        "ttl-cache-expiration",
+        (
+            "cache",
+            "stateful",
+            "tightly-coupled",
+        ),
+        "5 failed, 4 passed",
+    ),
 )
 
 
-def test_input_validation_task_has_reproducible_failing_baseline(
+@pytest.mark.parametrize(
+    (
+        "directory",
+        "task_id",
+        "tags",
+        "expected_summary",
+    ),
+    _BENCHMARK_CASES,
+)
+def test_task_has_reproducible_failing_baseline(
     tmp_path: Path,
+    directory: str,
+    task_id: str,
+    tags: tuple[str, ...],
+    expected_summary: str,
 ) -> None:
-    task = load_task(_TASK_ROOT / "task.json")
-    workspaces = WorkspaceManager(tmp_path / "workspaces")
-
-    with workspaces.provision(
-        task,
-        run_id="baseline",
-    ) as workspace:
-        result = CommandRunner(workspace.path).run_tests(task)
-
-    assert task.task_id == "input-validation"
-    assert task.tags == (
-        "validation",
-        "multi-module",
-        "decomposable",
+    task = load_task(
+        _TASK_ROOT
+        / directory
+        / "task.json"
     )
-    assert result.succeeded is False
-    assert result.exit_code == 1
-    assert "5 failed, 4 passed" in result.stdout
-
-def test_ttl_cache_task_has_reproducible_failing_baseline(
-    tmp_path: Path,
-) -> None:
-    task_root = (
-        Path(__file__).parents[1]
-        / "benchmarks"
-        / "tasks"
-        / "ttl-cache"
-    )
-    task = load_task(task_root / "task.json")
     workspaces = WorkspaceManager(
-        tmp_path / "workspaces"
+        tmp_path / task_id
     )
 
     with workspaces.provision(
         task,
-        run_id="ttl-cache-baseline",
+        run_id=f"{task_id}-baseline",
     ) as workspace:
         result = CommandRunner(
             workspace.path
         ).run_tests(task)
 
-    assert task.task_id == "ttl-cache-expiration"
-    assert task.tags == (
-        "cache",
-        "stateful",
-        "tightly-coupled",
-    )
+    assert task.task_id == task_id
+    assert task.tags == tags
     assert result.succeeded is False
     assert result.exit_code == 1
-    assert "5 failed, 4 passed" in result.stdout
-
-def test_service_retries_has_reproducible_failing_baseline(
-    tmp_path: Path,
-) -> None:
-    task_root = (
-        Path(__file__).parents[1]
-        / "benchmarks"
-        / "tasks"
-        / "service-retries"
-    )
-    task = load_task(task_root / "task.json")
-    workspaces = WorkspaceManager(
-        tmp_path / "workspaces"
-    )
-
-    with workspaces.provision(
-        task,
-        run_id="service-retries-baseline",
-    ) as workspace:
-        result = CommandRunner(
-            workspace.path
-        ).run_tests(task)
-
-    assert task.task_id == "service-retries"
-    assert task.tags == (
-        "retries",
-        "multi-module",
-        "decomposable",
-    )
-    assert result.succeeded is False
-    assert result.exit_code == 1
-    assert "9 failed, 6 passed" in result.stdout
+    assert expected_summary in result.stdout

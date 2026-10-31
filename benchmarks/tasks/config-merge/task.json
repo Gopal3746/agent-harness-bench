@@ -1,0 +1,17 @@
+{
+  "task_id": "config-merge",
+  "instruction": "Complete merge_config so nested dictionaries are merged recursively while scalar and list values from the override replace base values. The returned configuration must be fully independent from both inputs, including nested dictionaries and lists. Do not mutate either input and preserve the existing public API.",
+  "source_dir": "repository",
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q"
+  ],
+  "timeout_seconds": 30,
+  "tags": [
+    "configuration",
+    "recursive",
+    "tightly-coupled"
+  ]
+}

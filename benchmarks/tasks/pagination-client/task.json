@@ -1,0 +1,17 @@
+{
+  "task_id": "pagination-client",
+  "instruction": "Complete fetch_all_pages so it follows every next_cursor until the server returns null, combines items in order, and passes each cursor to the next request. Reject max_pages values below 1 with a ValueError mentioning max_pages. Raise a RuntimeError mentioning max_pages when another page exists after the page limit is reached. Detect repeated cursors and raise a ValueError mentioning cursor. Preserve the existing public API.",
+  "source_dir": "repository",
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q"
+  ],
+  "timeout_seconds": 30,
+  "tags": [
+    "api-client",
+    "single-module",
+    "non-decomposable"
+  ]
+}
