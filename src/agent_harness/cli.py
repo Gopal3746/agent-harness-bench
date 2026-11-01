@@ -27,6 +27,11 @@ from agent_harness.plotting import (
     plot_strategy_dashboard,
 )
 from agent_harness.runner import TaskRunner
+from agent_harness.safety import (
+    DEFAULT_MAX_TOTAL_RUNS,
+    prepare_output_file,
+    validate_run_budget,
+)
 from agent_harness.suite import BenchmarkSuiteRunner
 from agent_harness.task_catalog import (
     discover_tasks,
@@ -207,6 +212,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="keep workspaces after each run",
     )
+    benchmark_parser.add_argument(
+        "--max-total-runs",
+        type=int,
+        default=DEFAULT_MAX_TOTAL_RUNS,
+        help=(
+            "refuse larger experiments "
+            f"(default: {DEFAULT_MAX_TOTAL_RUNS})"
+        ),
+    )
+    benchmark_parser.add_argument(
+        "--overwrite-output",
+        action="store_true",
+        help="replace an existing non-empty results file",
+    )
 
     suite_parser = subparsers.add_parser(
         "benchmark-suite",
@@ -297,6 +316,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--retain-workspace",
         action="store_true",
         help="keep workspaces after each run",
+    )
+    suite_parser.add_argument(
+        "--max-total-runs",
+        type=int,
+        default=DEFAULT_MAX_TOTAL_RUNS,
+        help=(
+            "refuse larger experiments "
+            f"(default: {DEFAULT_MAX_TOTAL_RUNS})"
+        ),
+    )
+    suite_parser.add_argument(
+        "--overwrite-output",
+        action="store_true",
+        help="replace an existing non-empty results file",
     )
 
     analyze_parser = subparsers.add_parser(
@@ -477,17 +510,6 @@ def _run_task(arguments: argparse.Namespace) -> int:
 def _run_benchmark(
     arguments: argparse.Namespace,
 ) -> int:
-    api_key = os.environ.get(
-        "OPENROUTER_API_KEY",
-        "",
-    )
-
-    if not api_key.strip():
-        raise ValueError(
-            "OPENROUTER_API_KEY environment variable "
-            "is required"
-        )
-
     task = load_task(arguments.task)
     strategies = tuple(
         arguments.strategies or ExecutionStrategy
@@ -500,6 +522,30 @@ def _run_benchmark(
         temperature=arguments.temperature,
         max_steps=arguments.max_steps,
         seed=arguments.seed,
+    )
+    planned_runs = (
+        len(config.strategies)
+        * config.repetitions
+    )
+    validate_run_budget(
+        planned_runs,
+        arguments.max_total_runs,
+    )
+
+    api_key = os.environ.get(
+        "OPENROUTER_API_KEY",
+        "",
+    )
+
+    if not api_key.strip():
+        raise ValueError(
+            "OPENROUTER_API_KEY environment variable "
+            "is required"
+        )
+
+    prepare_output_file(
+        arguments.output,
+        overwrite=arguments.overwrite_output,
     )
     workspaces = WorkspaceManager(
         arguments.workspace_root,
@@ -575,6 +621,9 @@ def _run_benchmark_suite(
             json.dumps(
                 {
                     "dry_run": True,
+                    "max_total_runs": (
+                        arguments.max_total_runs
+                    ),
                     "model": config.model,
                     "planned_runs": planned_runs,
                     "repetitions": config.repetitions,
@@ -588,11 +637,20 @@ def _run_benchmark_suite(
                         task.task_id
                         for task in tasks
                     ],
+                    "within_run_limit": (
+                        planned_runs
+                        <= arguments.max_total_runs
+                    ),
                 },
                 sort_keys=True,
             )
         )
         return 0
+
+    validate_run_budget(
+        planned_runs,
+        arguments.max_total_runs,
+    )
 
     api_key = os.environ.get(
         "OPENROUTER_API_KEY",
@@ -605,6 +663,10 @@ def _run_benchmark_suite(
             "is required"
         )
 
+    prepare_output_file(
+        arguments.output,
+        overwrite=arguments.overwrite_output,
+    )
     workspaces = WorkspaceManager(
         arguments.workspace_root,
         retain_workspaces=arguments.retain_workspace,

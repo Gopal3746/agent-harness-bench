@@ -60,6 +60,11 @@ from agent_harness.runner import (
     TaskRunner,
     TaskRunResult,
 )
+from agent_harness.safety import (
+    DEFAULT_MAX_TOTAL_RUNS,
+    prepare_output_file,
+    validate_run_budget,
+)
 from agent_harness.suite import (
     BenchmarkSuiteResult,
     BenchmarkSuiteRunner,
@@ -94,6 +99,7 @@ from agent_harness.workspace import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_MAX_TOTAL_RUNS",
     "AgentResult",
     "AgentRunResult",
     "AgentStatus",
@@ -156,8 +162,10 @@ __all__ = [
     "load_task",
     "merge_change_sets",
     "plot_strategy_dashboard",
+    "prepare_output_file",
     "summarize_records",
     "summarize_records_by_task",
+    "validate_run_budget",
     "write_comparison_csv",
     "write_summary_csv",
     "write_task_summary_csv",

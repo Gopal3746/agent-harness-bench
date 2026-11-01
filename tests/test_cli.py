@@ -596,3 +596,142 @@ def test_benchmark_suite_dry_run_needs_no_api_key(
 
     assert FakeOpenRouterClient.api_keys == []
     assert not output_path.exists()
+
+def test_benchmark_suite_rejects_plan_over_run_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = tmp_path / "catalog"
+    first_task = catalog / "first"
+    second_task = catalog / "second"
+    first_task.mkdir(parents=True)
+    second_task.mkdir(parents=True)
+
+    write_task(first_task, task_id="task-a")
+    write_task(second_task, task_id="task-b")
+
+    monkeypatch.delenv(
+        "OPENROUTER_API_KEY",
+        raising=False,
+    )
+    FakeOpenRouterClient.api_keys.clear()
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "benchmark-suite",
+                str(catalog),
+                "--model",
+                "test/model",
+                "--repetitions",
+                "2",
+                "--max-total-runs",
+                "4",
+                "--output",
+                str(tmp_path / "runs.jsonl"),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert FakeOpenRouterClient.api_keys == []
+
+
+def test_benchmark_suite_protects_existing_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = tmp_path / "catalog"
+    task_root = catalog / "task"
+    task_root.mkdir(parents=True)
+    write_task(task_root)
+
+    output_path = tmp_path / "runs.jsonl"
+    output_path.write_text(
+        "existing result\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv(
+        "OPENROUTER_API_KEY",
+        "test-secret",
+    )
+    FakeOpenRouterClient.api_keys.clear()
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "benchmark-suite",
+                str(catalog),
+                "--model",
+                "test/model",
+                "--strategy",
+                "single",
+                "--repetitions",
+                "1",
+                "--output",
+                str(output_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert output_path.read_text(encoding="utf-8") == (
+        "existing result\n"
+    )
+    assert FakeOpenRouterClient.api_keys == []
+
+
+def test_benchmark_suite_can_overwrite_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    catalog = tmp_path / "catalog"
+    task_root = catalog / "task"
+    task_root.mkdir(parents=True)
+    write_task(task_root)
+
+    output_path = tmp_path / "runs.jsonl"
+    output_path.write_text(
+        "existing result\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv(
+        "OPENROUTER_API_KEY",
+        "test-secret",
+    )
+    monkeypatch.setattr(
+        cli,
+        "OpenRouterClient",
+        FakeOpenRouterClient,
+    )
+
+    exit_code = cli.main(
+        [
+            "benchmark-suite",
+            str(catalog),
+            "--model",
+            "test/model",
+            "--strategy",
+            "single",
+            "--repetitions",
+            "1",
+            "--output",
+            str(output_path),
+            "--workspace-root",
+            str(tmp_path / "workspaces"),
+            "--overwrite-output",
+        ]
+    )
+
+    assert exit_code == 0
+    capsys.readouterr()
+
+    records = output_path.read_text(
+        encoding="utf-8"
+    ).splitlines()
+
+    assert len(records) == 1
+    assert json.loads(records[0])["task_id"] == (
+        "sample-task"
+    )
