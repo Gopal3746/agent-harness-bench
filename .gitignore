@@ -16,3 +16,5 @@ workspaces/
 .vscode/
 
 *.egg-info/
+
+jobs/
