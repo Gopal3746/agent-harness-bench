@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Python 3.12 quality checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,harbor]"
+
+      - name: Run Ruff
+        run: ruff check .
+
+      - name: Run test suite
+        run: python -m pytest
+
+      - name: Validate Harbor integration
+        run: |
+          python - <<'PY'
+          from harbor.models.task.task import Task
+
+          from agent_harness.integrations.harbor_agent import (
+              AgentHarnessHarborAgent,
+          )
+
+          task_path = "harbor/tasks/value-update"
+
+          assert Task.is_valid_dir(task_path)
+          assert AgentHarnessHarborAgent.name() == "agent-harness-bench"
+          assert AgentHarnessHarborAgent.import_path() == (
+              "agent_harness.integrations.harbor_agent:"
+              "AgentHarnessHarborAgent"
+          )
+
+          print("Harbor integration is valid.")
+          PY
+
+      - name: Run API-free CLI smoke test
+        run: |
+          agent-harness tasks benchmarks/tasks
+
+          agent-harness benchmark-suite \
+            benchmarks/tasks \
+            --model test/model \
+            --strategy single \
+            --strategy parallel \
+            --repetitions 1 \
+            --dry-run
