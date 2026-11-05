@@ -35,6 +35,7 @@ class TaskSpec(BaseModel):
     test_command: tuple[str, ...] = ("pytest", "-q")
     timeout_seconds: PositiveInt = 300
     tags: tuple[str, ...] = ()
+    protected_paths: tuple[str, ...] = ("tests",)
 
     @field_validator("instruction")
     @classmethod
@@ -73,6 +74,36 @@ class TaskSpec(BaseModel):
             raise ValueError("tags must be unique")
 
         return cleaned
+
+    @field_validator("protected_paths")
+    @classmethod
+    def validate_protected_paths(
+        cls,
+        value: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        cleaned: list[str] = []
+
+        for supplied in value:
+            normalized = supplied.strip().rstrip("/")
+            path = Path(normalized)
+
+            if (
+                not normalized
+                or path.is_absolute()
+                or len(path.parts) != 1
+                or path.parts[0] in {".", ".."}
+            ):
+                raise ValueError(
+                    "protected_paths must contain top-level "
+                    "relative paths"
+                )
+
+            cleaned.append(path.as_posix())
+
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("protected_paths must be unique")
+
+        return tuple(cleaned)
 
 
 class BenchmarkConfig(BaseModel):

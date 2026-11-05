@@ -26,6 +26,7 @@ from agent_harness.tools import (
 )
 from agent_harness.workspace import (
     TaskWorkspace,
+    VerifierSnapshot,
     WorkspaceManager,
 )
 
@@ -96,7 +97,14 @@ class TaskRunner:
             task,
             run_id=run_id,
         ) as workspace:
-            repository = RepositoryTools(workspace.path)
+            verifier_snapshot = VerifierSnapshot.capture(
+                workspace.path,
+                task.protected_paths,
+            )
+            repository = RepositoryTools(
+                workspace.path,
+                protected_paths=task.protected_paths,
+            )
             commands = CommandRunner(workspace.path)
 
             dispatcher = ToolDispatcher(
@@ -112,6 +120,7 @@ class TaskRunner:
             )
 
             agent_result = agent.run(task)
+            verifier_snapshot.restore()
             verification = commands.run_tests(task)
 
             return TaskRunResult(

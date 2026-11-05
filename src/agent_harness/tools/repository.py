@@ -51,6 +51,7 @@ class RepositoryTools:
         max_file_bytes: int = 1_000_000,
         max_read_lines: int = 400,
         max_write_bytes: int = 1_000_000,
+        protected_paths: tuple[str, ...] = (),
     ) -> None:
         resolved_root = root.expanduser().resolve()
 
@@ -72,6 +73,9 @@ class RepositoryTools:
         self.max_file_bytes = max_file_bytes
         self.max_read_lines = max_read_lines
         self.max_write_bytes = max_write_bytes
+        self.protected_paths = self._normalize_protected_paths(
+            protected_paths
+        )
 
     def list_files(
         self,
@@ -227,6 +231,7 @@ class RepositoryTools:
         """Atomically create or overwrite a UTF-8 text file."""
 
         target = self._resolve(path)
+        self._ensure_writable(target)
 
         if target.exists() and not target.is_file():
             raise ToolExecutionError(f"path is not a file: {path}")
@@ -270,6 +275,7 @@ class RepositoryTools:
             )
 
         target = self._resolve(path)
+        self._ensure_writable(target)
 
         if not target.exists():
             raise ToolExecutionError(f"file does not exist: {path}")
@@ -333,6 +339,42 @@ class RepositoryTools:
 
     def _relative(self, path: Path) -> str:
         return path.relative_to(self.root).as_posix()
+
+    def _ensure_writable(self, target: Path) -> None:
+        relative = target.relative_to(self.root)
+
+        if (
+            relative.parts
+            and relative.parts[0] in self.protected_paths
+        ):
+            raise ToolExecutionError(
+                "path is protected from agent writes: "
+                f"{relative.as_posix()}"
+            )
+
+    @staticmethod
+    def _normalize_protected_paths(
+        protected_paths: tuple[str, ...],
+    ) -> frozenset[str]:
+        normalized: set[str] = set()
+
+        for supplied in protected_paths:
+            cleaned = supplied.strip().rstrip("/")
+            path = Path(cleaned)
+
+            if (
+                not cleaned
+                or path.is_absolute()
+                or len(path.parts) != 1
+                or path.parts[0] in {".", ".."}
+            ):
+                raise ValueError(
+                    "protected paths must be top-level relative paths"
+                )
+
+            normalized.add(path.as_posix())
+
+        return frozenset(normalized)
 
     def _iter_files(self, target: Path) -> Iterator[Path]:
         if target.is_file():
