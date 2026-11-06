@@ -303,6 +303,26 @@ def test_parallel_agent_runs_and_merges_dependency_groups(
     assert result.total_model_calls == 7
     assert result.total_tool_calls == 3
 
+    users_request = next(
+        request
+        for request in client.requests
+        if request["session_id"] == "run-users"
+    )
+    users_system_prompt = users_request["messages"][0]["content"]
+    users_user_prompt = users_request["messages"][1]["content"]
+    users_tool_names = {
+        schema["function"]["name"]
+        for schema in users_request["tools"]
+    }
+
+    assert "Original task:" in users_user_prompt
+    assert task.instruction in users_user_prompt
+    assert "Update the user limit." in users_user_prompt
+    assert "Update the network limit." in users_user_prompt
+    assert "isolated clone" in users_user_prompt
+    assert "Verify only the behavior" in users_system_prompt
+    assert "run_tests" not in users_tool_names
+
 
 def test_parallel_agent_rejects_conflicting_changes(
     tmp_path: Path,

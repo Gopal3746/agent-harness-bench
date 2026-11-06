@@ -20,14 +20,26 @@ from agent_harness.tools import (
     build_tool_schemas,
 )
 
-_SYSTEM_PROMPT = """\
+_BASE_SYSTEM_PROMPT = """\
 You are a coding agent operating inside an isolated repository workspace.
 
 Inspect the repository before editing it. Make the smallest correct change
 needed to complete the task. Use the available tools for reading, searching,
-editing, and running commands. Run the configured tests before claiming the
-task is complete. If a tool fails, inspect the error and recover when possible.
-Do not access files outside the assigned workspace.
+editing, and running commands. If a tool fails, inspect the error and recover
+when possible. Do not access files outside the assigned workspace.
+"""
+
+_FULL_VERIFICATION_GUIDANCE = """\
+Run the configured tests before claiming the task is complete.
+"""
+
+_SUBTASK_VERIFICATION_GUIDANCE = """\
+You own only one subtask of a larger plan. Verify only the behavior and files
+owned by your assigned subtask, using focused commands or targeted tests when
+available. Do not require the full repository test suite to pass because other
+subtasks may be incomplete or isolated in separate workspaces. The harness
+will run the full configured verification command after all changes are
+combined.
 """
 
 
@@ -52,6 +64,13 @@ class AgentStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     MAX_STEPS = "max_steps"
+
+
+class VerificationScope(StrEnum):
+    """How much verification one agent is responsible for."""
+
+    FULL = "full"
+    SUBTASK = "subtask"
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +165,7 @@ class SingleAgent:
         max_tokens: int | None = None,
         seed: int | None = 42,
         session_id: str | None = None,
+        verification_scope: VerificationScope = VerificationScope.FULL,
         clock_ns: Callable[[], int] = time.perf_counter_ns,
     ) -> None:
         if not model.strip():
@@ -167,8 +187,16 @@ class SingleAgent:
         self.max_tokens = max_tokens
         self.seed = seed
         self.session_id = session_id
+        self.verification_scope = verification_scope
         self.clock_ns = clock_ns
-        self.tool_schemas = build_tool_schemas()
+        self.tool_schemas = tuple(
+            schema
+            for schema in build_tool_schemas()
+            if (
+                verification_scope is VerificationScope.FULL
+                or schema["function"]["name"] != "run_tests"
+            )
+        )
 
     def run(self, task: TaskSpec) -> AgentRunResult:
         """Run the agent until completion or its step limit."""
@@ -308,25 +336,41 @@ class SingleAgent:
             tool_records=tool_records,
         )
 
-    @staticmethod
     def _initial_messages(
+        self,
         task: TaskSpec,
     ) -> list[dict[str, Any]]:
         verification_command = json.dumps(
             list(task.test_command)
         )
 
+        if self.verification_scope is VerificationScope.FULL:
+            system_prompt = (
+                _BASE_SYSTEM_PROMPT
+                + _FULL_VERIFICATION_GUIDANCE
+            )
+            verification_label = "Configured verification command"
+        else:
+            system_prompt = (
+                _BASE_SYSTEM_PROMPT
+                + _SUBTASK_VERIFICATION_GUIDANCE
+            )
+            verification_label = (
+                "Final full-suite verification command "
+                "(run later by the harness)"
+            )
+
         return [
             {
                 "role": "system",
-                "content": _SYSTEM_PROMPT,
+                "content": system_prompt,
             },
             {
                 "role": "user",
                 "content": (
                     f"Task ID: {task.task_id}\n\n"
                     f"{task.instruction}\n\n"
-                    "Configured verification command: "
+                    f"{verification_label}: "
                     f"{verification_command}"
                 ),
             },

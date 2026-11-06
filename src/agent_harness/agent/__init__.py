@@ -28,6 +28,7 @@ from agent_harness.agent.single import (
     ChatClient,
     SingleAgent,
     ToolCallRecord,
+    VerificationScope,
 )
 
 __all__ = [
@@ -47,6 +48,7 @@ __all__ = [
     "TaskPlan",
     "TaskPlanner",
     "ToolCallRecord",
+    "VerificationScope",
     "WorkspaceChangeSet",
     "WorkspaceMergeError",
     "WorkspaceSnapshot",

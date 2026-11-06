@@ -16,7 +16,9 @@ from agent_harness.agent.single import (
     ChatClient,
     SingleAgent,
     ToolCallRecord,
+    VerificationScope,
 )
+from agent_harness.agent.worker import build_worker_task
 from agent_harness.llm import ChatCompletionResult
 from agent_harness.models import TaskSpec
 from agent_harness.tools import ToolDispatcher
@@ -197,10 +199,16 @@ class SequentialAgent:
                 max_tokens=self.max_tokens,
                 seed=self.seed,
                 session_id=self._session_id(subtask.subtask_id),
+                verification_scope=VerificationScope.SUBTASK,
                 clock_ns=self.clock_ns,
             )
             agent_result = agent.run(
-                self._subtask_task(task, subtask)
+                build_worker_task(
+                    task,
+                    subtask,
+                    planning.plan,
+                    isolated_workspace=False,
+                )
             )
             completed.append(
                 SubtaskRunResult(
@@ -236,30 +244,6 @@ class SequentialAgent:
             return None
 
         return f"{self.session_id}-{suffix}"
-
-    @staticmethod
-    def _subtask_task(
-        task: TaskSpec,
-        subtask: SubtaskSpec,
-    ) -> TaskSpec:
-        dependencies = (
-            ", ".join(subtask.depends_on)
-            if subtask.depends_on
-            else "none"
-        )
-
-        return task.model_copy(
-            update={
-                "instruction": (
-                    "Complete this subtask of the larger task:\n"
-                    f"{subtask.instruction}\n\n"
-                    f"Subtask ID: {subtask.subtask_id}\n"
-                    f"Completed prerequisites: {dependencies}\n\n"
-                    "Work only on this subtask. Preserve changes already "
-                    "made in the shared workspace by earlier subtasks."
-                )
-            }
-        )
 
     def _result(
         self,

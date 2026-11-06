@@ -213,6 +213,24 @@ def test_sequential_agent_runs_subtasks_in_shared_workspace(
         "content"
     ]
 
+    edit_request = client.requests[1]
+    edit_system_prompt = edit_request["messages"][0]["content"]
+    edit_user_prompt = edit_request["messages"][1]["content"]
+    edit_tool_names = {
+        schema["function"]["name"]
+        for schema in edit_request["tools"]
+    }
+
+    assert "Original task:" in edit_user_prompt
+    assert task.instruction in edit_user_prompt
+    assert "Change VALUE to 2." in edit_user_prompt
+    assert "Inspect the updated value." in edit_user_prompt
+    assert "assigned to you" in edit_user_prompt
+    assert "another worker" in edit_user_prompt
+    assert "shared workspace" in edit_user_prompt
+    assert "Verify only the behavior" in edit_system_prompt
+    assert "run_tests" not in edit_tool_names
+
 
 def test_sequential_agent_aggregates_calls_and_usage(
     tmp_path: Path,

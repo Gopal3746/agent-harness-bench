@@ -16,6 +16,7 @@ from agent_harness import (
     TaskSpec,
     TokenUsage,
     ToolDispatcher,
+    VerificationScope,
 )
 
 
@@ -367,6 +368,36 @@ def test_agent_passes_configuration_and_prompt(
     assert "isolated repository" in messages[0]["content"]
     assert task.instruction in messages[1]["content"]
     assert "verification command" in messages[1]["content"]
+
+
+def test_subtask_agent_uses_scoped_verification_prompt(
+    tmp_path: Path,
+) -> None:
+    task, dispatcher, _ = make_agent_dependencies(tmp_path)
+    client = FakeChatClient(
+        [make_completion(content="Subtask finished.")]
+    )
+
+    SingleAgent(
+        client,
+        dispatcher,
+        model="test/model",
+        verification_scope=VerificationScope.SUBTASK,
+    ).run(task)
+
+    request = client.requests[0]
+    system_prompt = request["messages"][0]["content"]
+    user_prompt = request["messages"][1]["content"]
+    tool_names = {
+        schema["function"]["name"]
+        for schema in request["tools"]
+    }
+
+    assert "Verify only the behavior" in system_prompt
+    assert "Run the configured tests" not in system_prompt
+    assert "run later by the harness" in user_prompt
+    assert "run_tests" not in tool_names
+    assert "run_command" in tool_names
 
 
 def test_agent_records_model_failure(

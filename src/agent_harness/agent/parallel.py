@@ -18,6 +18,7 @@ from agent_harness.agent.planner import (
     PlanningError,
     PlanningResult,
     SubtaskSpec,
+    TaskPlan,
     TaskPlanner,
 )
 from agent_harness.agent.sequential import SubtaskRunResult
@@ -26,7 +27,9 @@ from agent_harness.agent.single import (
     ChatClient,
     SingleAgent,
     ToolCallRecord,
+    VerificationScope,
 )
+from agent_harness.agent.worker import build_worker_task
 from agent_harness.llm import ChatCompletionResult
 from agent_harness.models import TaskSpec
 from agent_harness.tools import (
@@ -213,7 +216,11 @@ class ParallelAgent:
         completed_groups: list[tuple[SubtaskRunResult, ...]] = []
 
         for group in planning.plan.parallel_groups():
-            outcomes = self._run_group(task, group)
+            outcomes = self._run_group(
+                task,
+                group,
+                planning.plan,
+            )
             group_results = tuple(
                 outcome.result for outcome in outcomes
             )
@@ -269,6 +276,7 @@ class ParallelAgent:
         self,
         task: TaskSpec,
         group: tuple[SubtaskSpec, ...],
+        plan: TaskPlan,
     ) -> tuple[_SubtaskOutcome, ...]:
         baseline = WorkspaceSnapshot.capture(
             self.dispatcher.repository.root
@@ -297,6 +305,7 @@ class ParallelAgent:
                         subtask,
                         clones[subtask.subtask_id],
                         baseline,
+                        plan,
                     )
                     for subtask in group
                 ]
@@ -311,12 +320,18 @@ class ParallelAgent:
         subtask: SubtaskSpec,
         clone: Path,
         baseline: WorkspaceSnapshot,
+        plan: TaskPlan,
     ) -> _SubtaskOutcome:
         cloned_task = task.model_copy(
             update={
                 "source_dir": clone,
-                "instruction": self._subtask_instruction(subtask),
             }
+        )
+        cloned_task = build_worker_task(
+            cloned_task,
+            subtask,
+            plan,
+            isolated_workspace=True,
         )
 
         dispatcher = self._cloned_dispatcher(
@@ -333,6 +348,7 @@ class ParallelAgent:
             max_tokens=self.max_tokens,
             seed=self.seed,
             session_id=self._session_id(subtask.subtask_id),
+            verification_scope=VerificationScope.SUBTASK,
             clock_ns=self.clock_ns,
         )
 
@@ -365,6 +381,7 @@ class ParallelAgent:
                 max_file_bytes=repository.max_file_bytes,
                 max_read_lines=repository.max_read_lines,
                 max_write_bytes=repository.max_write_bytes,
+                protected_paths=task.protected_paths,
             ),
             commands=CommandRunner(
                 clone,
@@ -383,23 +400,6 @@ class ParallelAgent:
             return None
 
         return f"{self.session_id}-{suffix}"
-
-    @staticmethod
-    def _subtask_instruction(subtask: SubtaskSpec) -> str:
-        dependencies = (
-            ", ".join(subtask.depends_on)
-            if subtask.depends_on
-            else "none"
-        )
-
-        return (
-            "Complete this isolated subtask of the larger task:\n"
-            f"{subtask.instruction}\n\n"
-            f"Subtask ID: {subtask.subtask_id}\n"
-            f"Completed prerequisites: {dependencies}\n\n"
-            "Work only on this subtask. Your changes will be merged with "
-            "changes from other independent subagents."
-        )
 
     def _result(
         self,
