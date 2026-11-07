@@ -56,6 +56,7 @@ class ChatClient(Protocol):
         max_tokens: int | None = None,
         seed: int | None = None,
         session_id: str | None = None,
+        tool_choice: str | None = None,
     ) -> ChatCompletionResult:
         """Return one streamed model completion."""
 
@@ -210,14 +211,9 @@ class SingleAgent:
 
         for step in range(1, self.max_steps + 1):
             try:
-                completion = self.client.complete(
+                completion = self._complete(
                     messages,
-                    model=self.model,
-                    tools=self.tool_schemas,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    seed=self.seed,
-                    session_id=self.session_id,
+                    force_final_answer=(step == self.max_steps),
                 )
             except OpenRouterError as error:
                 return self._result(
@@ -335,6 +331,30 @@ class SingleAgent:
             model_calls=model_calls,
             tool_records=tool_records,
         )
+
+    def _complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        force_final_answer: bool,
+    ) -> ChatCompletionResult:
+        common = {
+            "model": self.model,
+            "tools": self.tool_schemas,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "seed": self.seed,
+            "session_id": self.session_id,
+        }
+
+        if force_final_answer:
+            return self.client.complete(
+                messages,
+                tool_choice="none",
+                **common,
+            )
+
+        return self.client.complete(messages, **common)
 
     def _initial_messages(
         self,

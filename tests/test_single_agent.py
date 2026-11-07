@@ -40,6 +40,7 @@ class FakeChatClient:
         max_tokens: int | None = None,
         seed: int | None = None,
         session_id: str | None = None,
+        tool_choice: str | None = None,
     ) -> ChatCompletionResult:
         self.requests.append(
             {
@@ -50,6 +51,7 @@ class FakeChatClient:
                 "max_tokens": max_tokens,
                 "seed": seed,
                 "session_id": session_id,
+                "tool_choice": tool_choice,
             }
         )
 
@@ -275,6 +277,44 @@ def test_agent_stops_at_maximum_steps(
     assert result.total_model_calls == 2
     assert result.total_tool_calls == 2
     assert "maximum of 2" in (result.error or "")
+    assert client.requests[-1]["tool_choice"] == "none"
+
+
+def test_agent_reserves_final_step_for_completion(
+    tmp_path: Path,
+) -> None:
+    task, dispatcher, _ = make_agent_dependencies(tmp_path)
+    client = FakeChatClient(
+        [
+            make_completion(
+                tool_calls=(
+                    StreamedToolCall(
+                        index=0,
+                        call_id="inspect",
+                        name="list_files",
+                        arguments="{}",
+                    ),
+                )
+            ),
+            make_completion(
+                content="The assigned work is complete."
+            ),
+        ]
+    )
+
+    result = SingleAgent(
+        client,
+        dispatcher,
+        model="test/model",
+        max_steps=2,
+    ).run(task)
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.steps == 2
+    assert result.total_model_calls == 2
+    assert result.total_tool_calls == 1
+    assert client.requests[0]["tool_choice"] is None
+    assert client.requests[1]["tool_choice"] == "none"
 
 
 def test_agent_aggregates_usage_metrics(

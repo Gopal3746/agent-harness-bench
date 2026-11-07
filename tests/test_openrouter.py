@@ -198,6 +198,53 @@ def test_builds_streaming_request_payload() -> None:
     assert captured_payload["session_id"] == "session-1"
 
 
+def test_can_force_completion_without_tool_calls() -> None:
+    captured_payload: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payload.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"content":"done"},'
+                '"finish_reason":"stop"}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
+        )
+
+    _, clock = make_clock(
+        1_000_000_000,
+        1_100_000_000,
+        1_200_000_000,
+    )
+    client = OpenRouterClient(
+        "test-key",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(handler)
+        ),
+        clock_ns=clock,
+    )
+
+    client.complete(
+        [{"role": "user", "content": "Finish"}],
+        model="test/model",
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "parameters": {"type": "object"},
+                },
+            }
+        ],
+        tool_choice="none",
+    )
+
+    assert captured_payload["tool_choice"] == "none"
+    assert len(captured_payload["tools"]) == 1
+
+
 def test_raises_for_http_error() -> None:
     transport = httpx.MockTransport(
         lambda request: httpx.Response(

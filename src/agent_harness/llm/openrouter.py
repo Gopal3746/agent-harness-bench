@@ -171,6 +171,7 @@ class OpenRouterClient:
         max_tokens: int | None = None,
         seed: int | None = None,
         session_id: str | None = None,
+        tool_choice: str | None = None,
     ) -> ChatCompletionResult:
         """Stream and aggregate one chat-completion request."""
 
@@ -179,6 +180,11 @@ class OpenRouterClient:
 
         if not model.strip():
             raise ValueError("model must not be blank")
+
+        if tool_choice not in {None, "auto", "none"}:
+            raise ValueError(
+                "tool_choice must be 'auto', 'none', or None"
+            )
 
         payload: dict[str, Any] = {
             "messages": list(messages),
@@ -192,7 +198,9 @@ class OpenRouterClient:
 
         if tools:
             payload["tools"] = list(tools)
-            payload["tool_choice"] = "auto"
+            payload["tool_choice"] = tool_choice or "auto"
+        elif tool_choice is not None:
+            payload["tool_choice"] = tool_choice
 
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
