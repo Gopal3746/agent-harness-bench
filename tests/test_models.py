@@ -88,16 +88,14 @@ def test_benchmark_config_parses_strategy_values() -> None:
     assert config.seed == 42
 
 
-def test_parallel_strategy_requires_multiple_workers() -> None:
-    with pytest.raises(
-        ValidationError,
-        match="parallelism must be at least 2",
-    ):
-        BenchmarkConfig(
-            model="openai/example-model",
-            strategies=["parallel"],
-            parallelism=1,
-        )
+def test_parallel_strategy_allows_single_worker() -> None:
+    config = BenchmarkConfig(
+        model="openai/example-model",
+        strategies=["parallel"],
+        parallelism=1,
+    )
+
+    assert config.parallelism == 1
 
 
 def test_benchmark_config_rejects_duplicate_strategies() -> None:

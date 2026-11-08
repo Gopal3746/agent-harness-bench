@@ -168,8 +168,8 @@ class ParallelAgent:
         session_id: str | None = None,
         clock_ns: Callable[[], int] = time.perf_counter_ns,
     ) -> None:
-        if parallelism < 2:
-            raise ValueError("parallelism must be at least 2")
+        if parallelism < 1:
+            raise ValueError("parallelism must be positive")
 
         self.client = client
         self.dispatcher = dispatcher
@@ -226,6 +226,31 @@ class ParallelAgent:
             )
             completed_groups.append(group_results)
 
+            successful_outcomes = tuple(
+                outcome
+                for outcome in outcomes
+                if outcome.result.agent.completed
+            )
+
+            if successful_outcomes:
+                try:
+                    merge_change_sets(
+                        self.dispatcher.repository.root,
+                        tuple(
+                            outcome.changes
+                            for outcome in successful_outcomes
+                        ),
+                    )
+                except WorkspaceMergeError as error:
+                    return self._result(
+                        task=task,
+                        status=AgentStatus.FAILED,
+                        planning=planning,
+                        groups=tuple(completed_groups),
+                        error=str(error),
+                        started_ns=started_ns,
+                    )
+
             failed = next(
                 (
                     result
@@ -245,21 +270,6 @@ class ParallelAgent:
                         f"subtask {failed.subtask.subtask_id!r} failed: "
                         f"{failed.agent.error or 'unknown error'}"
                     ),
-                    started_ns=started_ns,
-                )
-
-            try:
-                merge_change_sets(
-                    self.dispatcher.repository.root,
-                    tuple(outcome.changes for outcome in outcomes),
-                )
-            except WorkspaceMergeError as error:
-                return self._result(
-                    task=task,
-                    status=AgentStatus.FAILED,
-                    planning=planning,
-                    groups=tuple(completed_groups),
-                    error=str(error),
                     started_ns=started_ns,
                 )
 

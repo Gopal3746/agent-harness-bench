@@ -9,7 +9,6 @@ from pydantic import (
     Field,
     PositiveInt,
     field_validator,
-    model_validator,
 )
 
 
@@ -142,16 +141,3 @@ class BenchmarkConfig(BaseModel):
             raise ValueError("strategies must be unique")
 
         return value
-
-    @model_validator(mode="after")
-    def validate_parallelism(self) -> BenchmarkConfig:
-        if (
-            ExecutionStrategy.PARALLEL in self.strategies
-            and self.parallelism < 2
-        ):
-            raise ValueError(
-                "parallelism must be at least 2 when using "
-                "the parallel strategy"
-            )
-
-        return self

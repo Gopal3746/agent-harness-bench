@@ -6,8 +6,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from agent_harness import (
     AgentStatus,
     ChatCompletionResult,
@@ -391,7 +389,7 @@ def test_parallel_agent_rejects_conflicting_changes(
     ) == "USER_LIMIT = 1\n"
 
 
-def test_parallel_agent_does_not_merge_failed_group(
+def test_parallel_agent_keeps_only_successful_work_from_failed_group(
     tmp_path: Path,
 ) -> None:
     task, dispatcher, repository = make_dependencies(tmp_path)
@@ -412,7 +410,16 @@ def test_parallel_agent_does_not_merge_failed_group(
                 make_completion("Users complete."),
             ],
             "run-network": [
-                OpenRouterError("provider unavailable")
+                tool_completion(
+                    "network-edit",
+                    "replace_text",
+                    {
+                        "path": "network.py",
+                        "old": "PORT_LIMIT = 1",
+                        "new": "PORT_LIMIT = 2",
+                    },
+                ),
+                OpenRouterError("provider unavailable"),
             ],
             "run-verify": [
                 make_completion("must not run")
@@ -434,7 +441,11 @@ def test_parallel_agent_does_not_merge_failed_group(
 
     assert (repository / "users.py").read_text(
         encoding="utf-8"
-    ) == "USER_LIMIT = 1\n"
+    ) == "USER_LIMIT = 2\n"
+
+    assert (repository / "network.py").read_text(
+        encoding="utf-8"
+    ) == "PORT_LIMIT = 1\n"
 
     assert not any(
         request["session_id"] == "run-verify"
@@ -442,16 +453,36 @@ def test_parallel_agent_does_not_merge_failed_group(
     )
 
 
-def test_parallel_agent_requires_multiple_workers(
+def test_parallel_agent_allows_single_worker(
     tmp_path: Path,
 ) -> None:
-    _, dispatcher, _ = make_dependencies(tmp_path)
-    client = RoutingChatClient({})
+    task, dispatcher, _ = make_dependencies(tmp_path)
+    client = RoutingChatClient(
+        {
+            "run-planner": [
+                make_plan(
+                    [
+                        {
+                            "subtask_id": "inspect",
+                            "instruction": "Inspect the repository.",
+                            "depends_on": [],
+                        }
+                    ]
+                )
+            ],
+            "run-inspect": [
+                make_completion("Inspection complete.")
+            ],
+        }
+    )
 
-    with pytest.raises(ValueError, match="at least 2"):
-        ParallelAgent(
-            client,
-            dispatcher,
-            model="test/model",
-            parallelism=1,
-        )
+    result = ParallelAgent(
+        client,
+        dispatcher,
+        model="test/model",
+        parallelism=1,
+        session_id="run",
+    ).run(task)
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.completed is True
