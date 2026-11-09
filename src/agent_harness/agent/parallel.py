@@ -55,6 +55,7 @@ class ParallelRunResult:
     groups: tuple[tuple[SubtaskRunResult, ...], ...]
     error: str | None
     wall_time_ms: float
+    merge_duration_ms: float = 0.0
 
     @property
     def completed(self) -> bool:
@@ -210,10 +211,12 @@ class ParallelAgent:
                 planning=None,
                 groups=(),
                 error=str(error),
+                merge_duration_ms=0.0,
                 started_ns=started_ns,
             )
 
         completed_groups: list[tuple[SubtaskRunResult, ...]] = []
+        merge_duration_ms = 0.0
 
         for group in planning.plan.parallel_groups():
             outcomes = self._run_group(
@@ -233,6 +236,8 @@ class ParallelAgent:
             )
 
             if successful_outcomes:
+                merge_started_ns = self.clock_ns()
+
                 try:
                     merge_change_sets(
                         self.dispatcher.repository.root,
@@ -242,14 +247,22 @@ class ParallelAgent:
                         ),
                     )
                 except WorkspaceMergeError as error:
+                    merge_duration_ms += (
+                        self.clock_ns() - merge_started_ns
+                    ) / 1_000_000
                     return self._result(
                         task=task,
                         status=AgentStatus.FAILED,
                         planning=planning,
                         groups=tuple(completed_groups),
                         error=str(error),
+                        merge_duration_ms=merge_duration_ms,
                         started_ns=started_ns,
                     )
+                else:
+                    merge_duration_ms += (
+                        self.clock_ns() - merge_started_ns
+                    ) / 1_000_000
 
             failed = next(
                 (
@@ -270,6 +283,7 @@ class ParallelAgent:
                         f"subtask {failed.subtask.subtask_id!r} failed: "
                         f"{failed.agent.error or 'unknown error'}"
                     ),
+                    merge_duration_ms=merge_duration_ms,
                     started_ns=started_ns,
                 )
 
@@ -279,6 +293,7 @@ class ParallelAgent:
             planning=planning,
             groups=tuple(completed_groups),
             error=None,
+            merge_duration_ms=merge_duration_ms,
             started_ns=started_ns,
         )
 
@@ -419,6 +434,7 @@ class ParallelAgent:
         planning: PlanningResult | None,
         groups: tuple[tuple[SubtaskRunResult, ...], ...],
         error: str | None,
+        merge_duration_ms: float,
         started_ns: int,
     ) -> ParallelRunResult:
         return ParallelRunResult(
@@ -427,6 +443,7 @@ class ParallelAgent:
             planning=planning,
             groups=groups,
             error=error,
+            merge_duration_ms=merge_duration_ms,
             wall_time_ms=(
                 self.clock_ns() - started_ns
             )

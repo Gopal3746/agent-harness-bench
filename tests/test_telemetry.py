@@ -5,6 +5,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from agent_harness import (
     AgentRunResult,
     AgentStatus,
@@ -120,7 +122,7 @@ def test_run_record_calculates_workload_metrics(
         recorded_at=recorded_at,
     )
 
-    assert record.schema_version == 2
+    assert record.schema_version == 3
     assert record.recorded_at == recorded_at
     assert record.passed is True
     assert record.model_call_count == 1
@@ -139,6 +141,8 @@ def test_run_record_calculates_workload_metrics(
     assert record.tool_calls[0].response == '{"succeeded":true}'
     assert record.tool_calls[0].arguments_truncated is False
     assert record.tool_calls[0].response_truncated is False
+    assert record.planning_duration_ms is None
+    assert record.merge_duration_ms is None
     assert record.verification.succeeded is True
 
 
@@ -189,26 +193,35 @@ def test_tool_traces_are_redacted_and_bounded(
     assert "[REDACTED]" in trace.response
 
 
-def test_version_one_records_remain_loadable(
+@pytest.mark.parametrize("schema_version", [1, 2])
+def test_older_records_remain_loadable(
     tmp_path: Path,
+    schema_version: int,
 ) -> None:
     payload = RunRecord.from_result(
         make_task_result(tmp_path)
     ).model_dump(mode="json")
-    payload["schema_version"] = 1
+    payload["schema_version"] = schema_version
+    payload.pop("planning_duration_ms")
+    payload.pop("merge_duration_ms")
 
-    for tool_call in payload["tool_calls"]:
-        tool_call.pop("call_id")
-        tool_call.pop("arguments")
-        tool_call.pop("response")
-        tool_call.pop("arguments_truncated")
-        tool_call.pop("response_truncated")
+    if schema_version == 1:
+        for tool_call in payload["tool_calls"]:
+            tool_call.pop("call_id")
+            tool_call.pop("arguments")
+            tool_call.pop("response")
+            tool_call.pop("arguments_truncated")
+            tool_call.pop("response_truncated")
 
     record = RunRecord.model_validate(payload)
 
-    assert record.schema_version == 1
-    assert record.tool_calls[0].arguments is None
-    assert record.tool_calls[0].response is None
+    assert record.schema_version == schema_version
+    assert record.planning_duration_ms is None
+    assert record.merge_duration_ms is None
+
+    if schema_version == 1:
+        assert record.tool_calls[0].arguments is None
+        assert record.tool_calls[0].response is None
 
 
 def test_missing_usage_remains_unknown(
@@ -254,7 +267,7 @@ def test_jsonl_writer_appends_one_object_per_line(
     second = json.loads(lines[1])
 
     assert first["run_id"] == "run-001"
-    assert first["schema_version"] == 2
+    assert first["schema_version"] == 3
     assert first["strategy"] == "single"
     assert first["tool_calls"][0]["arguments"] == "{}"
     assert first["tool_calls"][0]["response"] == (

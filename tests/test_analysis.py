@@ -35,6 +35,8 @@ def make_record(
     input_tokens: int | None,
     output_tokens: int | None,
     cost_usd: float | None,
+    planning_duration_ms: float | None = None,
+    merge_duration_ms: float | None = None,
 ) -> RunRecord:
     return RunRecord(
         recorded_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -59,6 +61,8 @@ def make_record(
         total_cost_usd=cost_usd,
         total_model_latency_ms=wall_time_ms / 2,
         total_tool_duration_ms=10.0,
+        planning_duration_ms=planning_duration_ms,
+        merge_duration_ms=merge_duration_ms,
         first_ttft_ms=ttft_ms,
         mean_ttft_ms=ttft_ms,
         mean_stream_event_interval_ms=5.0,
@@ -118,6 +122,8 @@ def test_summarize_records_groups_metrics_by_strategy() -> None:
             input_tokens=None,
             output_tokens=None,
             cost_usd=None,
+            planning_duration_ms=5.0,
+            merge_duration_ms=2.0,
         ),
     )
 
@@ -136,6 +142,8 @@ def test_summarize_records_groups_metrics_by_strategy() -> None:
     assert single.mean_input_tokens == 200.0
     assert single.mean_output_tokens == 40.0
     assert single.total_cost_usd == pytest.approx(0.04)
+    assert single.mean_planning_duration_ms is None
+    assert single.mean_merge_duration_ms is None
 
     assert parallel.strategy is ExecutionStrategy.PARALLEL
     assert parallel.run_count == 1
@@ -144,6 +152,8 @@ def test_summarize_records_groups_metrics_by_strategy() -> None:
     assert parallel.mean_ttft_ms is None
     assert parallel.mean_output_tokens_per_second is None
     assert parallel.total_cost_usd is None
+    assert parallel.mean_planning_duration_ms == 5.0
+    assert parallel.mean_merge_duration_ms == 2.0
 
 
 def test_load_run_records_reads_jsonl(tmp_path: Path) -> None:

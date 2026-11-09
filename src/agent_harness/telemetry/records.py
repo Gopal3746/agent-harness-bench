@@ -10,7 +10,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from agent_harness.agent import AgentStatus, ToolCallRecord
+from agent_harness.agent import (
+    AgentStatus,
+    ParallelRunResult,
+    SequentialRunResult,
+    ToolCallRecord,
+)
 from agent_harness.llm import ChatCompletionResult
 from agent_harness.models import ExecutionStrategy
 from agent_harness.runner import TaskRunResult
@@ -95,7 +100,7 @@ class RunRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1, 2] = 2
+    schema_version: Literal[1, 2, 3] = 3
     recorded_at: datetime
     run_id: str
     task_id: str
@@ -116,6 +121,8 @@ class RunRecord(BaseModel):
     total_cost_usd: float | None
     total_model_latency_ms: float
     total_tool_duration_ms: float
+    planning_duration_ms: float | None = None
+    merge_duration_ms: float | None = None
     first_ttft_ms: float | None
     mean_ttft_ms: float | None
     mean_stream_event_interval_ms: float | None
@@ -200,6 +207,14 @@ class RunRecord(BaseModel):
             total_tool_duration_ms=sum(
                 call.duration_ms
                 for call in result.agent.tool_calls
+            ),
+            planning_duration_ms=_planning_duration_ms(
+                result.agent
+            ),
+            merge_duration_ms=(
+                result.agent.merge_duration_ms
+                if isinstance(result.agent, ParallelRunResult)
+                else None
             ),
             first_ttft_ms=(calls[0].ttft_ms if calls else None),
             mean_ttft_ms=(
@@ -304,6 +319,21 @@ def _model_call_metrics(
         raw_event_count=call.raw_event_count,
         tool_call_count=len(call.tool_calls),
     )
+
+
+def _planning_duration_ms(
+    agent: object,
+) -> float | None:
+    if not isinstance(
+        agent,
+        (SequentialRunResult, ParallelRunResult),
+    ):
+        return None
+
+    if agent.planning is None:
+        return None
+
+    return agent.planning.wall_time_ms
 
 
 def _tool_call_metrics(call: ToolCallRecord) -> ToolCallMetrics:

@@ -111,6 +111,17 @@ class ConcurrentChatClient(RoutingChatClient):
         )
 
 
+class IncrementingClock:
+    def __init__(self) -> None:
+        self.value = 0
+        self.lock = threading.Lock()
+
+    def __call__(self) -> int:
+        with self.lock:
+            self.value += 1_000_000
+            return self.value
+
+
 def make_completion(
     content: str = "",
     *,
@@ -219,6 +230,7 @@ def test_parallel_agent_runs_and_merges_dependency_groups(
     tmp_path: Path,
 ) -> None:
     task, dispatcher, repository = make_dependencies(tmp_path)
+    clock = IncrementingClock()
 
     client = ConcurrentChatClient(
         {
@@ -265,6 +277,7 @@ def test_parallel_agent_runs_and_merges_dependency_groups(
         model="test/model",
         parallelism=2,
         session_id="run",
+        clock_ns=clock,
     ).run(task)
 
     assert result.status is AgentStatus.COMPLETED
@@ -300,6 +313,9 @@ def test_parallel_agent_runs_and_merges_dependency_groups(
 
     assert result.total_model_calls == 7
     assert result.total_tool_calls == 3
+    assert result.planning is not None
+    assert result.planning.wall_time_ms == 1.0
+    assert result.merge_duration_ms == 2.0
 
     users_request = next(
         request

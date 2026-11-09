@@ -30,6 +30,8 @@ class StrategySummary:
     mean_input_tokens: float | None
     mean_output_tokens: float | None
     total_cost_usd: float | None
+    mean_planning_duration_ms: float | None = None
+    mean_merge_duration_ms: float | None = None
 
 
 def load_run_records(path: Path) -> tuple[RunRecord, ...]:
@@ -69,6 +71,8 @@ class TaskStrategySummary:
     mean_input_tokens: float | None
     mean_output_tokens: float | None
     total_cost_usd: float | None
+    mean_planning_duration_ms: float | None = None
+    mean_merge_duration_ms: float | None = None
 
 def summarize_records_by_task(
     records: Sequence[RunRecord],
@@ -269,6 +273,12 @@ def _summarize_strategy(
         total_cost_usd=(
             sum(reported_costs) if reported_costs else None
         ),
+        mean_planning_duration_ms=_optional_mean(
+            record.planning_duration_ms for record in records
+        ),
+        mean_merge_duration_ms=_optional_mean(
+            record.merge_duration_ms for record in records
+        ),
     )
 
 def _summarize_task_strategy(
@@ -298,6 +308,10 @@ def _summarize_task_strategy(
         mean_input_tokens=summary.mean_input_tokens,
         mean_output_tokens=summary.mean_output_tokens,
         total_cost_usd=summary.total_cost_usd,
+        mean_planning_duration_ms=(
+            summary.mean_planning_duration_ms
+        ),
+        mean_merge_duration_ms=summary.mean_merge_duration_ms,
     )
 
 @dataclass(frozen=True, slots=True)

@@ -313,6 +313,16 @@ def test_task_runner_selects_subagent_strategy(
     assert record.final_answer == "Subtask complete."
     assert record.steps == 2
     assert record.model_call_count == 3
+    assert record.planning_duration_ms == (
+        result.agent.planning.wall_time_ms
+    )
+
+    if isinstance(result.agent, ParallelRunResult):
+        assert record.merge_duration_ms == (
+            result.agent.merge_duration_ms
+        )
+    else:
+        assert record.merge_duration_ms is None
 
 
 def test_task_runner_rejects_disabled_strategy(
