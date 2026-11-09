@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from statistics import fmean
@@ -8,10 +10,28 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from agent_harness.agent import AgentStatus
+from agent_harness.agent import AgentStatus, ToolCallRecord
 from agent_harness.llm import ChatCompletionResult
 from agent_harness.models import ExecutionStrategy
 from agent_harness.runner import TaskRunResult
+
+_MAX_TOOL_TRACE_CHARS = 2_000
+_TRACE_TRUNCATION_MARKER = "\n... tool trace truncated ...\n"
+_SENSITIVE_KEY = re.compile(
+    r"(?:api[_-]?key|authorization|credential|password|secret|token)",
+    re.IGNORECASE,
+)
+_SENSITIVE_ASSIGNMENT = re.compile(
+    r"(?i)\b(api[_-]?key|authorization|credential|password|secret|token)"
+    r"(\s*[:=]\s*)"
+    r"(?:\"[^\"]*\"|'[^']*'|[^\s,;}]+)",
+)
+_BEARER_TOKEN = re.compile(
+    r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"
+)
+_KNOWN_SECRET_TOKEN = re.compile(
+    r"\b(?:sk|gh[pousr])[-_][A-Za-z0-9_-]{8,}\b"
+)
 
 
 class ModelCallMetrics(BaseModel):
@@ -40,12 +60,17 @@ class ModelCallMetrics(BaseModel):
 
 
 class ToolCallMetrics(BaseModel):
-    """Timing and outcome for one coding tool invocation."""
+    """Bounded, redacted trace for one coding tool invocation."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     step: int
+    call_id: str | None = None
     name: str
+    arguments: str | None = None
+    response: str | None = None
+    arguments_truncated: bool = False
+    response_truncated: bool = False
     is_error: bool
     duration_ms: float
 
@@ -70,7 +95,7 @@ class RunRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 2
     recorded_at: datetime
     run_id: str
     task_id: str
@@ -197,12 +222,7 @@ class RunRecord(BaseModel):
                 for index, call in enumerate(calls, start=1)
             ),
             tool_calls=tuple(
-                ToolCallMetrics(
-                    step=call.step,
-                    name=call.name,
-                    is_error=call.is_error,
-                    duration_ms=call.duration_ms,
-                )
+                _tool_call_metrics(call)
                 for call in result.agent.tool_calls
             ),
             verification=VerificationMetrics(
@@ -284,3 +304,92 @@ def _model_call_metrics(
         raw_event_count=call.raw_event_count,
         tool_call_count=len(call.tool_calls),
     )
+
+
+def _tool_call_metrics(call: ToolCallRecord) -> ToolCallMetrics:
+    arguments, arguments_truncated = _bounded_trace(
+        call.arguments
+    )
+    response, response_truncated = _bounded_trace(
+        call.response
+    )
+
+    return ToolCallMetrics(
+        step=call.step,
+        call_id=call.call_id,
+        name=call.name,
+        arguments=arguments,
+        response=response,
+        arguments_truncated=arguments_truncated,
+        response_truncated=response_truncated,
+        is_error=call.is_error,
+        duration_ms=call.duration_ms,
+    )
+
+
+def _bounded_trace(value: str) -> tuple[str, bool]:
+    redacted = _redact_trace(value)
+
+    if len(redacted) <= _MAX_TOOL_TRACE_CHARS:
+        return redacted, False
+
+    remaining = _MAX_TOOL_TRACE_CHARS - len(
+        _TRACE_TRUNCATION_MARKER
+    )
+    beginning_length = remaining * 2 // 3
+    ending_length = remaining - beginning_length
+
+    return (
+        redacted[:beginning_length]
+        + _TRACE_TRUNCATION_MARKER
+        + redacted[-ending_length:]
+    ), True
+
+
+def _redact_trace(value: str) -> str:
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return _redact_text(value)
+
+    redacted = _redact_json_value(payload)
+    return json.dumps(
+        redacted,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _redact_json_value(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            str(key): (
+                "[REDACTED]"
+                if _SENSITIVE_KEY.search(str(key))
+                else _redact_json_value(item)
+            )
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [_redact_json_value(item) for item in value]
+
+    if isinstance(value, str):
+        return _redact_text(value)
+
+    return value
+
+
+def _redact_text(value: str) -> str:
+    redacted = _SENSITIVE_ASSIGNMENT.sub(
+        lambda match: (
+            f"{match.group(1)}{match.group(2)}[REDACTED]"
+        ),
+        value,
+    )
+    redacted = _BEARER_TOKEN.sub(
+        "Bearer [REDACTED]",
+        redacted,
+    )
+    return _KNOWN_SECRET_TOKEN.sub("[REDACTED]", redacted)

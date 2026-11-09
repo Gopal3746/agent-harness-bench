@@ -120,7 +120,7 @@ def test_run_record_calculates_workload_metrics(
         recorded_at=recorded_at,
     )
 
-    assert record.schema_version == 1
+    assert record.schema_version == 2
     assert record.recorded_at == recorded_at
     assert record.passed is True
     assert record.model_call_count == 1
@@ -134,7 +134,81 @@ def test_run_record_calculates_workload_metrics(
     assert record.mean_stream_event_interval_ms == 100.0
     assert record.output_tokens_per_second == 100.0
     assert record.model_calls[0].raw_event_count == 4
+    assert record.tool_calls[0].call_id == "call-1"
+    assert record.tool_calls[0].arguments == "{}"
+    assert record.tool_calls[0].response == '{"succeeded":true}'
+    assert record.tool_calls[0].arguments_truncated is False
+    assert record.tool_calls[0].response_truncated is False
     assert record.verification.succeeded is True
+
+
+def test_tool_traces_are_redacted_and_bounded(
+    tmp_path: Path,
+) -> None:
+    result = make_task_result(tmp_path)
+    secret = "sk-or-v1-this-must-not-appear"
+    long_text = "x" * 4_000
+    traced_call = replace(
+        result.agent.tool_calls[0],
+        arguments=json.dumps(
+            {
+                "api_key": secret,
+                "content": long_text,
+            }
+        ),
+        response=json.dumps(
+            {
+                "access_token": secret,
+                "stdout": (
+                    f"Authorization: Bearer {secret}\n"
+                    f"{long_text}"
+                ),
+            }
+        ),
+    )
+    traced_result = replace(
+        result,
+        agent=replace(
+            result.agent,
+            tool_calls=(traced_call,),
+        ),
+    )
+
+    record = RunRecord.from_result(traced_result)
+    trace = record.tool_calls[0]
+
+    assert trace.arguments is not None
+    assert trace.response is not None
+    assert len(trace.arguments) <= 2_000
+    assert len(trace.response) <= 2_000
+    assert trace.arguments_truncated is True
+    assert trace.response_truncated is True
+    assert secret not in trace.arguments
+    assert secret not in trace.response
+    assert "[REDACTED]" in trace.arguments
+    assert "[REDACTED]" in trace.response
+
+
+def test_version_one_records_remain_loadable(
+    tmp_path: Path,
+) -> None:
+    payload = RunRecord.from_result(
+        make_task_result(tmp_path)
+    ).model_dump(mode="json")
+    payload["schema_version"] = 1
+
+    for tool_call in payload["tool_calls"]:
+        tool_call.pop("call_id")
+        tool_call.pop("arguments")
+        tool_call.pop("response")
+        tool_call.pop("arguments_truncated")
+        tool_call.pop("response_truncated")
+
+    record = RunRecord.model_validate(payload)
+
+    assert record.schema_version == 1
+    assert record.tool_calls[0].arguments is None
+    assert record.tool_calls[0].response is None
 
 
 def test_missing_usage_remains_unknown(
@@ -180,6 +254,11 @@ def test_jsonl_writer_appends_one_object_per_line(
     second = json.loads(lines[1])
 
     assert first["run_id"] == "run-001"
+    assert first["schema_version"] == 2
     assert first["strategy"] == "single"
+    assert first["tool_calls"][0]["arguments"] == "{}"
+    assert first["tool_calls"][0]["response"] == (
+        '{"succeeded":true}'
+    )
     assert first["verification"]["succeeded"] is True
     assert second["run_id"] == "run-001"
