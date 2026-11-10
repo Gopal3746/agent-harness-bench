@@ -118,11 +118,13 @@ def plan_completion() -> ChatCompletionResult:
                         "subtask_id": "edit",
                         "instruction": "Change VALUE to 2.",
                         "depends_on": [],
+                        "relevant_files": ["app.py"],
                     },
                     {
                         "subtask_id": "inspect",
                         "instruction": "Inspect the updated value.",
                         "depends_on": ["edit"],
+                        "relevant_files": ["app.py"],
                     },
                 ]
             }
@@ -228,8 +230,16 @@ def test_sequential_agent_runs_subtasks_in_shared_workspace(
     assert "assigned to you" in edit_user_prompt
     assert "another worker" in edit_user_prompt
     assert "shared workspace" in edit_user_prompt
+    assert "Relevant repository context" in edit_user_prompt
+    assert "VALUE = 1" in edit_user_prompt
     assert "Verify only the behavior" in edit_system_prompt
     assert "run_tests" not in edit_tool_names
+
+    inspect_user_prompt = client.requests[3]["messages"][1][
+        "content"
+    ]
+    assert "Relevant repository context" in inspect_user_prompt
+    assert "VALUE = 2" in inspect_user_prompt
 
 
 def test_sequential_agent_aggregates_calls_and_usage(

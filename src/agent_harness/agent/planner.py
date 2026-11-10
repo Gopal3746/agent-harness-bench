@@ -4,6 +4,7 @@ import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any, Self
 
 from pydantic import (
@@ -28,6 +29,7 @@ Return only a JSON object with a `subtasks` array. Each subtask must have:
 - `subtask_id`: a short lowercase identifier
 - `instruction`: a precise implementation instruction
 - `depends_on`: an array of prerequisite subtask IDs
+- `relevant_files`: repository files the worker should inspect or modify
 
 Create independent subtasks when work can safely happen in separate files or
 modules. Add dependencies only when one change truly requires another. Do not
@@ -50,6 +52,10 @@ class SubtaskSpec(BaseModel):
     )
     instruction: str
     depends_on: tuple[str, ...] = ()
+    relevant_files: tuple[str, ...] = Field(
+        default=(),
+        max_length=6,
+    )
 
     @field_validator("instruction")
     @classmethod
@@ -74,6 +80,30 @@ class SubtaskSpec(BaseModel):
 
         if len(cleaned) != len(set(cleaned)):
             raise ValueError("dependencies must be unique")
+
+        return cleaned
+
+    @field_validator("relevant_files")
+    @classmethod
+    def validate_relevant_files(
+        cls,
+        value: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        cleaned = tuple(path.strip() for path in value)
+
+        if any(not path for path in cleaned):
+            raise ValueError("relevant file paths must not be blank")
+
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("relevant file paths must be unique")
+
+        for path in cleaned:
+            candidate = PurePosixPath(path)
+
+            if candidate.is_absolute() or ".." in candidate.parts:
+                raise ValueError(
+                    "relevant file paths must stay inside the repository"
+                )
 
         return cleaned
 
@@ -253,7 +283,10 @@ class TaskPlanner:
                     f"Task ID: {task.task_id}\n\n"
                     f"Instruction:\n{task.instruction}\n\n"
                     f"Repository files:\n{files}\n\n"
-                    f"Create at most {self.max_subtasks} subtasks."
+                    f"Create at most {self.max_subtasks} subtasks. "
+                    "Choose relevant_files only from the repository "
+                    "files listed above. Use an empty array when no "
+                    "specific file is relevant."
                 ),
             },
         ]

@@ -161,6 +161,18 @@ def test_plan_rejects_dependency_cycle() -> None:
         )
 
 
+def test_subtask_rejects_unsafe_relevant_file_path() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="must stay inside the repository",
+    ):
+        SubtaskSpec(
+            subtask_id="escape",
+            instruction="Read a file outside the repository.",
+            relevant_files=("../secret.txt",),
+        )
+
+
 def test_planner_parses_json_and_records_request(
     tmp_path: Path,
 ) -> None:
@@ -173,11 +185,17 @@ def test_planner_parses_json_and_records_request(
                         "subtask_id": "users",
                         "instruction": "Update user validation.",
                         "depends_on": [],
+                        "relevant_files": [
+                            "validation_app/users.py"
+                        ],
                     },
                     {
                         "subtask_id": "network",
                         "instruction": "Update port validation.",
                         "depends_on": [],
+                        "relevant_files": [
+                            "validation_app/network.py"
+                        ],
                     },
                 ]
             }
@@ -203,6 +221,9 @@ def test_planner_parses_json_and_records_request(
     )
 
     assert len(result.plan.subtasks) == 2
+    assert result.plan.subtasks[0].relevant_files == (
+        "validation_app/users.py",
+    )
     assert result.wall_time_ms == 250.0
 
     request = client.requests[0]
@@ -210,6 +231,7 @@ def test_planner_parses_json_and_records_request(
     assert request["tools"] is None
     assert request["session_id"] == "run-001-planner"
     assert "validation_app/users.py" in request["messages"][1]["content"]
+    assert "relevant_files" in request["messages"][0]["content"]
     assert "at most 4 subtasks" in request["messages"][1]["content"]
 
 

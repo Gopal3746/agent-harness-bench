@@ -18,7 +18,10 @@ from agent_harness.agent.single import (
     ToolCallRecord,
     VerificationScope,
 )
-from agent_harness.agent.worker import build_worker_task
+from agent_harness.agent.worker import (
+    build_worker_task,
+    load_file_context,
+)
 from agent_harness.llm import ChatCompletionResult
 from agent_harness.models import TaskSpec
 from agent_harness.tools import ToolDispatcher
@@ -190,6 +193,10 @@ class SequentialAgent:
         completed: list[SubtaskRunResult] = []
 
         for subtask in planning.plan.execution_order():
+            file_context = load_file_context(
+                self.dispatcher.repository,
+                (subtask,),
+            )
             agent = SingleAgent(
                 self.client,
                 self.dispatcher,
@@ -208,6 +215,7 @@ class SequentialAgent:
                     subtask,
                     planning.plan,
                     isolated_workspace=False,
+                    file_context=file_context,
                 )
             )
             completed.append(

@@ -29,7 +29,10 @@ from agent_harness.agent.single import (
     ToolCallRecord,
     VerificationScope,
 )
-from agent_harness.agent.worker import build_worker_task
+from agent_harness.agent.worker import (
+    build_worker_task,
+    load_file_context,
+)
 from agent_harness.llm import ChatCompletionResult
 from agent_harness.models import TaskSpec
 from agent_harness.tools import (
@@ -306,6 +309,10 @@ class ParallelAgent:
         baseline = WorkspaceSnapshot.capture(
             self.dispatcher.repository.root
         )
+        file_context = load_file_context(
+            self.dispatcher.repository,
+            group,
+        )
 
         with tempfile.TemporaryDirectory(
             prefix="agent-harness-parallel-"
@@ -331,6 +338,7 @@ class ParallelAgent:
                         clones[subtask.subtask_id],
                         baseline,
                         plan,
+                        file_context,
                     )
                     for subtask in group
                 ]
@@ -346,6 +354,7 @@ class ParallelAgent:
         clone: Path,
         baseline: WorkspaceSnapshot,
         plan: TaskPlan,
+        file_context: dict[str, str],
     ) -> _SubtaskOutcome:
         cloned_task = task.model_copy(
             update={
@@ -357,6 +366,7 @@ class ParallelAgent:
             subtask,
             plan,
             isolated_workspace=True,
+            file_context=file_context,
         )
 
         dispatcher = self._cloned_dispatcher(

@@ -211,16 +211,19 @@ def independent_plan() -> ChatCompletionResult:
                 "subtask_id": "users",
                 "instruction": "Update the user limit.",
                 "depends_on": [],
+                "relevant_files": ["users.py"],
             },
             {
                 "subtask_id": "network",
                 "instruction": "Update the network limit.",
                 "depends_on": [],
+                "relevant_files": ["network.py"],
             },
             {
                 "subtask_id": "verify",
                 "instruction": "Inspect the combined changes.",
                 "depends_on": ["users", "network"],
+                "relevant_files": ["users.py", "network.py"],
             },
         ]
     )
@@ -334,8 +337,17 @@ def test_parallel_agent_runs_and_merges_dependency_groups(
     assert "Update the user limit." in users_user_prompt
     assert "Update the network limit." in users_user_prompt
     assert "isolated clone" in users_user_prompt
+    assert "Relevant repository context" in users_user_prompt
+    assert "USER_LIMIT = 1" in users_user_prompt
+    assert "PORT_LIMIT = 1" not in users_user_prompt
     assert "Verify only the behavior" in users_system_prompt
     assert "run_tests" not in users_tool_names
+
+    verify_user_prompt = verify_requests[0]["messages"][1][
+        "content"
+    ]
+    assert "USER_LIMIT = 2" in verify_user_prompt
+    assert "PORT_LIMIT = 2" in verify_user_prompt
 
 
 def test_parallel_agent_rejects_conflicting_changes(
