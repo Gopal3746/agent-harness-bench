@@ -11,6 +11,10 @@ executes each task in an isolated workspace, verifies the result with
 task-specific tests, records structured telemetry, and generates comparative
 analysis artifacts.
 
+The implementation is covered by 173 automated tests, including agent-loop,
+workspace-isolation, merge-conflict, verifier-protection, telemetry, CLI, and
+Harbor integration tests.
+
 ## Research questions
 
 The project is designed to answer three questions:
@@ -20,78 +24,84 @@ The project is designed to answer three questions:
 3. Does parallel execution reduce end-to-end latency enough to justify its
    additional token usage and cost?
 
-## Pilot result
+## Corrected pilot result
 
-A controlled 18-run pilot compared three strategies across six coding tasks
-using `minimax/minimax-m3.1-flash`.
+A corrected 18-run pilot compared three strategies across six coding tasks
+using `minimax/minimax-m3.1-flash`. It was run after fixing verifier isolation,
+worker context, finalization, partial parallel merging, and telemetry issues
+identified during review of the original experiment.
 
-![Pilot strategy dashboard](experiments/pilot/strategy-dashboard.png)
+![Corrected pilot strategy dashboard](experiments/corrected-pilot/strategy-dashboard.png)
 
 | Strategy | Strict pass rate | Verification rate | Mean wall time | Mean model calls | Cost per run |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Single | 66.7% | 100.0% | 21.27 s | 7.00 | $0.00247 |
-| Sequential | 0.0% | 33.3% | 56.16 s | 12.67 | $0.00760 |
-| Parallel | 33.3% | 50.0% | 56.10 s | 15.83 | $0.00822 |
+| Single | 100.0% | 100.0% | 22.66 s | 6.83 | $0.00270 |
+| Sequential | 66.7% | 100.0% | 173.71 s | 33.67 | $0.02010 |
+| Parallel | 66.7% | 66.7% | 131.02 s | 21.50 | $0.01982 |
 
-The full pilot cost `$0.109798`.
+The corrected pilot passed 14 of 18 strict runs and cost `$0.255740`. Sixteen
+of 18 workspaces passed independent repository verification. A strict pass
+requires both successful verification and clean agent termination.
 
-A strict pass requires both successful independent verification and clean agent
-termination. Eleven of 18 runs passed repository verification, while six
-passed the strict end-to-end metric. Five runs produced correct changes but
-reached the configured eight-step limit before terminating cleanly.
+The original pilot passed 6 of 18 strict runs. The corrected result is a
+44.4-percentage-point improvement, showing that harness behavior was a major
+experimental confounder. Both pilots are retained for transparency.
 
-These results are exploratory. Each task and strategy was run once, so they
+These results remain exploratory. Each task and strategy was run once, so they
 should not be interpreted as statistically significant.
 
 ## Key findings
 
-### Single-agent execution performed best on small tasks
+### Harness correctness materially changed the conclusion
 
-The single-agent strategy passed independent verification on all six tasks. It
-was also the fastest and least expensive strategy.
+Worker-scoped verification, parent-task context, a reserved completion turn,
+successful-worker merging, and planner-selected file context raised sequential
+success from 0.0% to 66.7% and parallel success from 33.3% to 66.7%.
 
-For the small repositories in this suite, one agent had enough context to
-complete the work without decomposition or merge overhead.
+The original near-zero subagent result was therefore not a reliable measure of
+the strategies themselves.
 
-### Parallelism did not guarantee lower latency
+### Single-agent execution remained strongest on small tasks
 
-Parallel execution increased mean wall time by `163.7%` relative to the
-single-agent baseline. It also increased:
+Single-agent execution passed all six tasks and remained the fastest and least
+expensive strategy. Sequential and parallel mean cost per run was about 7.45x
+and 7.35x the single-agent cost, respectively.
 
-- mean input tokens by `113.1%`;
-- mean output tokens by `267.9%`;
-- cost per run by `232.4%`.
+For these small repositories, one agent had enough context to complete the work
+without decomposition overhead.
 
-Parallel execution had the highest output-token throughput, but additional
-planning, model calls, tool calls, and coordination eliminated the throughput
-benefit at the task level.
+### Parallel improved latency relative to sequential
 
-### TTFT was not the main source of overhead
+Parallel and sequential execution each passed four of six strict runs.
+Parallel was 24.6% faster on mean wall time and cost 1.4% less, showing a real
+latency benefit from concurrent workers when compared with sequential
+decomposition.
 
-Mean time to first token remained relatively stable:
+Parallel still took 5.78x as long as the single-agent baseline and used 4.29x
+as many input tokens. Parallelism reduced subagent latency; it did not overcome
+the overall orchestration cost on this task set.
 
-| Strategy | Mean TTFT |
-| --- | ---: |
-| Single | 757.68 ms |
-| Sequential | 741.84 ms |
-| Parallel | 774.10 ms |
+### Planning mattered; merging did not dominate
 
-The higher end-to-end latency came primarily from the number of inference and
-tool-use steps rather than slower individual requests.
+Mean planner time was 11.87 seconds for sequential and 10.16 seconds for
+parallel runs. Mean parallel merge time was only 1.54 milliseconds, so file
+merging was not responsible for the remaining latency gap.
 
-### Correctness and termination are different outcomes
+The larger costs came from additional model calls, worker output, and repeated
+tool-driven execution.
 
-Twelve runs reached the maximum-step condition. Five of those runs had already
-produced code that passed independent verification.
+### Correctness and termination remain distinct outcomes
 
-This distinction motivates reporting four separate outcomes:
+Three corrected runs reached the maximum-step condition. Two had already
+produced workspaces that passed independent verification, but they failed the
+strict metric because the agent did not terminate cleanly.
 
-- independent verification success;
-- clean agent completion;
-- maximum-step termination;
-- strict end-to-end success.
+The harness therefore reports independent verification, completion status,
+maximum-step termination, and strict end-to-end success separately.
 
-The complete methodology and results are available in
+The full corrected methodology and results are available in
+[`experiments/corrected-pilot`](experiments/corrected-pilot/README.md). The
+superseded original result remains in
 [`experiments/pilot`](experiments/pilot/README.md).
 
 ## Architecture
@@ -123,7 +133,8 @@ This is the lowest-overhead strategy and serves as the experimental baseline.
 
 A planner decomposes the task into dependency-aware subtasks. Workers execute
 those subtasks in topological order so later workers can observe earlier
-changes.
+changes. Planner-selected repository files are preloaded into bounded worker
+contexts and refreshed after prerequisite changes.
 
 This strategy tests whether focused contexts improve correctness enough to
 offset additional inference calls.
@@ -132,9 +143,12 @@ offset additional inference calls.
 
 A planner identifies independent subtasks, which run concurrently in cloned
 workspaces. The harness calculates file-level change sets and merges compatible
-changes into the final workspace.
+changes into the final workspace. Workers in the same execution group share a
+bounded snapshot of planner-selected file context.
 
-Conflicting changes are rejected rather than silently overwritten.
+Conflicting changes are rejected rather than silently overwritten. Changes
+from successful workers are preserved even when another worker in the same
+group fails.
 
 ## Coding-agent tools
 
@@ -145,11 +159,14 @@ Agents interact with repositories through structured tools:
 - search repository text;
 - write files;
 - replace exact text;
-- run task-approved commands;
-- execute independent tests.
+- run allowlisted commands; and
+- execute configured tests during single-agent runs.
 
 Repository paths are resolved against the workspace root. Absolute paths,
-parent-directory traversal, and symlink escapes are rejected.
+parent-directory traversal, and symlink escapes are rejected by the file
+tools. Native command execution is not a host sandbox: an allowlisted
+interpreter can access paths outside the workspace. Use the Harbor integration
+when container isolation is required.
 
 ## Isolated execution and verification
 
@@ -158,7 +175,9 @@ unchanged, and temporary workspaces are removed unless retention is explicitly
 enabled.
 
 After the agent stops, the harness runs the task's verification command
-independently. Agent claims are never treated as proof of correctness.
+independently. Protected verifier files are restored from an immutable snapshot
+before verification, so agent edits cannot weaken the test oracle. Agent claims
+are never treated as proof of correctness.
 
 A run is considered a strict pass only when:
 
@@ -173,9 +192,11 @@ Each run produces a structured JSONL record containing:
 - agent status and termination error;
 - end-to-end wall time;
 - model-call and tool-call counts;
+- bounded, redacted tool arguments and responses;
 - tool errors and tool execution duration;
 - input, output, cached, and reasoning tokens;
 - reported inference cost;
+- planning and merge phase durations;
 - time to first token;
 - total model latency;
 - output-token throughput;
@@ -202,14 +223,16 @@ agent-harness-bench/
 │       ├── service-retries/
 │       └── ttl-cache/
 ├── experiments/
+│   ├── corrected-pilot/
+│   │   ├── README.md
+│   │   ├── runs.jsonl
+│   │   ├── summary.csv
+│   │   ├── task-summary.csv
+│   │   ├── comparisons.csv
+│   │   ├── strategy-dashboard.png
+│   │   └── reproduce.sh
 │   └── pilot/
-│       ├── README.md
-│       ├── runs.jsonl
-│       ├── summary.csv
-│       ├── task-summary.csv
-│       ├── comparisons.csv
-│       ├── strategy-dashboard.png
-│       └── reproduce.sh
+│       └── ... original pilot artifacts
 ├── harbor/
 │   ├── README.md
 │   └── tasks/
@@ -293,7 +316,7 @@ agent-harness benchmark-suite \
   --strategy parallel \
   --repetitions 1 \
   --parallelism 2 \
-  --max-steps 8 \
+  --max-steps 9 \
   --max-total-runs 18 \
   --dry-run
 ```
@@ -303,7 +326,9 @@ agent-harness benchmark-suite \
 Set the API key in the environment. Never commit it to the repository.
 
 ```bash
-export OPENROUTER_API_KEY="your-key"
+read -s "OPENROUTER_API_KEY?OpenRouter API key: "
+export OPENROUTER_API_KEY
+printf '\n'
 ```
 
 Run a task with the single-agent strategy:
@@ -313,7 +338,7 @@ agent-harness run \
   benchmarks/tasks/input-validation/task.json \
   --model minimax/minimax-m3.1-flash \
   --strategy single \
-  --max-steps 8 \
+  --max-steps 9 \
   --output results/single-run.jsonl \
   --workspace-root workspaces
 ```
@@ -336,7 +361,7 @@ agent-harness benchmark-suite \
   --strategy parallel \
   --repetitions 1 \
   --parallelism 2 \
-  --max-steps 8 \
+  --max-steps 9 \
   --temperature 0 \
   --seed 42 \
   --suite-id example-suite \
@@ -370,10 +395,11 @@ The analysis reports:
 - model and tool calls;
 - input and output tokens;
 - total cost;
+- mean planning and merge durations;
 - baseline-relative speedup and percentage changes;
 - per-task strategy results.
 
-## Reproduce the pilot
+## Reproduce the corrected pilot
 
 The reproduction script refuses to overwrite an existing result file:
 
@@ -382,8 +408,8 @@ read -s "OPENROUTER_API_KEY?OpenRouter API key: "
 export OPENROUTER_API_KEY
 printf '\n'
 
-OUTPUT_DIR=experiments/reproduction \
-  ./experiments/pilot/reproduce.sh
+./experiments/corrected-pilot/reproduce.sh \
+  experiments/reproduction
 
 unset OPENROUTER_API_KEY
 ```
@@ -484,6 +510,8 @@ Future experiments should investigate:
 8. conflict-aware semantic merge strategies;
 9. token-level streaming telemetry where providers expose it.
 
-The pilot suggests that orchestration should be selected based on task
-structure rather than enabled by default. For small tasks, coordination
-overhead can dominate the potential benefit of parallel inference.
+The corrected pilot shows that harness details can dominate orchestration
+results. After those confounders were addressed, subagent success improved
+substantially, but single-agent execution still performed best on this small
+task suite. Orchestration should be selected based on task structure rather
+than enabled by default.
